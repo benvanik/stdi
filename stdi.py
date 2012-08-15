@@ -39,6 +39,11 @@ if len(modified_modules):
 #   def callback(self, index):
 #     print index
 
+_breakpoint_file = os.path.join(sublime.packages_path(),
+                                '..',
+                                'Settings',
+                                'Breakpoints.sublime_session')
+
 
 # Cached providers, mapped by provider URI
 _providers = {}
@@ -47,6 +52,21 @@ _debuggers = {}
 # The debugger for each provider, mapped by provider URI
 # TODO(benvanik): remove this - it limits things to one active session/provider
 _debuggers_by_provider = {}
+# Breakpoint list - inspects the _debuggers to maintain breakpoints
+_breakpoint_list = di.load_breakpoint_list(_breakpoint_file, _debuggers)
+
+
+def _get_syntax_name(view):
+  """Gets the name of the syntax used in the given view.
+
+  Args:
+    view: View.
+
+  Returns:
+    The name of the syntax used in the given view.
+  """
+  syntax = view.settings().get('syntax')
+  return os.path.splitext(os.path.basename(syntax))[0]
 
 
 def _launch_debugger(target_window, provider_uri, attach):
@@ -355,6 +375,17 @@ class _WindowCommand(sublime_plugin.WindowCommand):
     else:
       return None
 
+  def get_view_uri(self):
+    """Gets the URI of the current view, if any.
+
+    Returns:
+      A URI or None if there is no view or the file has not yet been named.
+    """
+    view = self.window.active_view()
+    if view:
+      return view.file_name()
+    return None
+
 
 class StdiToggleAllBreakpoints(_WindowCommand):
   """Enables/disables all breakpoints.
@@ -499,13 +530,26 @@ class StdiEvaluate(_WindowCommand):
 class _ContextCommand(_WindowCommand):
   """Context menu command.
   """
-  def get_line_number(self):
-    """Gets the line number currently selected in the active view.
+  # TODO(benvanik): could make this get_locations to enable actions with
+  #                 multiple selection, but I don't use that so I don't care!
+  def get_location(self, include_column=False):
+    """Gets the cursor location of the current view.
+
+    Args:
+      include_column: True to include the column number, otherwise it will be
+                      0 to indicate the entire line.
 
     Returns:
-      A line number in the active view, or None if no view is active.
+      A (uri, line, column) location or None if no selection.
     """
-    return None
+    view = self.window.active_view()
+    if not view or not len(view.sel()):
+      return None
+    sel = view.sel()[0]
+    (line, column) = view.rowcol(sel.begin())
+    if not include_column:
+      column = 0
+    return (self.get_view_uri(), line, column)
 
 
 class StdiContinueToHereCommand(_ContextCommand):
@@ -542,35 +586,43 @@ class _BreakpointContextCommand(_ContextCommand):
     Returns:
       A Breakpoint on the clicked line, if one exists.
     """
-    line_number = self.get_line_number()
-    if line_number is None:
-      return None
-    return None
+    location = self.get_location()
+    if not location:
+      return
+    global _breakpoint_list
+    return _breakpoint_list.get_breakpoint_at_location(location)
 
 
-class StdiAddBreakpointCommand(_BreakpointContextCommand):
+class StdiAddRemoveBreakpointCommand(_BreakpointContextCommand):
   """Adds a new breakpoint on the clicked line.
   """
   def run(self):
-    bp = self.get_line_breakpoint()
-    if bp:
+    global _breakpoint_list
+    location = self.get_location()
+    if not location:
       return
-    print 'add bp'
+    breakpoint = _breakpoint_list.get_breakpoint_at_location(location)
+    if not breakpoint:
+      _breakpoint_list.create_breakpoint_at_location(location)
+    else:
+      _breakpoint_list.remove_breakpoint(breakpoint)
 
-  def is_visible(self):
-    if not super(StdiAddBreakpointCommand, self).is_visible():
-      return False
-    return self.get_debugger() and not self.get_line_breakpoint()
+  def description(self):
+    breakpoint = self.get_line_breakpoint()
+    if not breakpoint:
+      return 'Add Breakpoint'
+    else:
+      return 'Remove Breakpoint'
 
 
 class StdiToggleBreakpointCommand(_BreakpointContextCommand):
   """Enables or disables the breakpoint on the clicked line.
   """
   def run(self):
-    bp = self.get_line_breakpoint()
-    if not bp:
+    breakpoint = self.get_line_breakpoint()
+    if not breakpoint:
       return
-    print 'toggle bp'
+    breakpoint.set_enabled(not breakpoint.is_enabled())
 
   def is_visible(self):
     if not super(StdiToggleBreakpointCommand, self).is_visible():
@@ -578,39 +630,26 @@ class StdiToggleBreakpointCommand(_BreakpointContextCommand):
     return self.get_line_breakpoint()
 
   def description(self):
-    bp = self.get_line_breakpoint()
-    # if not bp.is_enabled():
-    #   return 'Enable Breakpoint'
-    # else:
-    #   return 'Disable Breakpoint'
-    return '{Enable} Breakpoint'
+    breakpoint = self.get_line_breakpoint()
+    if not breakpoint:
+      return 'None'
+    if not breakpoint.is_enabled():
+      return 'Enable Breakpoint'
+    else:
+      return 'Disable Breakpoint'
 
 
 class StdiEditBreakpointCommand(_BreakpointContextCommand):
   """Edits the breakpoint on the clicked line.
   """
   def run(self):
-    bp = self.get_line_breakpoint()
-    if not bp:
+    breakpoint = self.get_line_breakpoint()
+    if not breakpoint:
       return
-    print 'edit bp'
+    # TODO(benvanik): edit breakpoint condition/ignore count/etc
+    print 'TODO: edit breakpoint'
 
   def is_visible(self):
     if not super(StdiEditBreakpointCommand, self).is_visible():
-      return False
-    return self.get_line_breakpoint()
-
-
-class StdiRemoveBreakpointCommand(_BreakpointContextCommand):
-  """Removes an existing breakpoint from the clicked line.
-  """
-  def run(self):
-    bp = self.get_line_breakpoint()
-    if not bp:
-      return
-    print 'remove bp'
-
-  def is_visible(self):
-    if not super(StdiRemoveBreakpointCommand, self).is_visible():
       return False
     return self.get_line_breakpoint()

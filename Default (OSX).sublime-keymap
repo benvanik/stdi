@@ -5,7 +5,7 @@
   },
   {
     "keys": ["f9"],
-    "command": "stdi_add_breakpoint"
+    "command": "stdi_add_remove_breakpoint"
   },
   {
     "keys": ["shift+f9"],
