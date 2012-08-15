@@ -1,5 +1,13 @@
 [
   {
+    "keys": ["f5"],
+    "command": "stdi_launch_debugger"
+  },
+  {
+    "keys": ["shift+f5"],
+    "command": "stdi_attach_debugger"
+  },
+  {
     "keys": ["f8"],
     "command": "stdi_debug_pause"
   },

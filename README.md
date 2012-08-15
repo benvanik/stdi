@@ -41,6 +41,8 @@ More UI/etc is TODO, but for now you can use the Command Palette
 (`ctrl-shift-P`) with the prefix `Debugger:` to access most commands. The
 following keyboard shortcuts are recognized:
 
+* F5: launch debugger
+* shift-F5: attach debugger
 * F8: pause/resume target, continue if broken
 * F9: add/remove a breakpoint
 * shift-F9: enable/disable a breakpoint
