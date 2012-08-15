@@ -1,9 +1,9 @@
 [
-  {
+  /*{
     "id": "stdi_launch_debugger",
     "command": "stdi_launch_debugger",
     "caption": "Launch Debugger"
-  },
+  },*/
   {
     "id": "stdi_attach_debugger",
     "command": "stdi_attach_debugger",

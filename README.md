@@ -25,7 +25,7 @@ From the `Project` menu select `Edit Project`, add or merge the following:
 
     "settings":
     {
-        "stdi_provider": "v8://localhost:5898"
+        "debug_target": "v8://localhost:5898"
     }
 
 The provider URI is the target of the debugger. In the future I'll make it more
@@ -80,7 +80,7 @@ TODO: support script mapping so DART/coffeescript?/etc work
 
 #### V8/node.js
 
-Working! Launch with `--debug` and put the provider in your ST project settings
+Working! Launch with `--debug` and put the target in your ST project settings
 as `v8://localhost:port`.
 
 #### Chrome

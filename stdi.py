@@ -103,7 +103,7 @@ def _get_debugger_provider_uri_for_view(view):
     A debugger provider URI, if one is defined.
   """
   settings = view.settings()
-  return settings.get('stdi_provider', None)
+  return settings.get('debug_target', None)
 
 
 def _get_debugger_for_view(view):
