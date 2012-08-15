@@ -4,9 +4,73 @@ stdi - Sublime Text 2 Debugger Interface
 A debugger interface for Sublime Text 2, providing an easy way to wire up a
 variety of debuggers with rich UI. Included is a debugger for v8.
 
-## Usage
+SUUUUPER experimental! Consider this a proof-of-concept!
+
+## Features
+
+### Breakpoints
 
 TODO
+
+### Stack Frame Navigation
+
+TODO
+
+### Watches
+
+TODO
+
+### Expression Evaluation
+
+TODO
+
+### Live Updating on Save
+
+AKA 'edit-and-continue'. This pretty much works right now so long as you don't
+make changes that V8 is unable to handle, such as adding/removing functions,
+changing scopes, etc. Reporting for failures is TODO.
+
+## Debug Targets
+
+### JavaScript
+
+TODO: support script mapping so DART/coffeescript?/etc work
+
+#### V8/node.js
+
+Working! Launch with `--debug` and put the provider in your ST project settings
+as `v8://localhost:port`.
+
+#### Chrome
+
+TODO
+
+### Others
+
+It'd be cool to plug in other runtimes that have remote debuggers. It's easy to
+add them, so go contribute!
+
+## Usage
+
+The debugger requires some settings to function - namely, what you want to debug.
+I recommend making these settings per-project, however you can make them global
+defaults as well.
+
+From the `Project` menu select `Edit Project`, add or merge the following:
+
+    "settings":
+    {
+        "stdi_provider": "v8://localhost:5898"
+    }
+
+The provider URI is the target of the debugger. In the future I'll make it more
+flexible/add more providers/etc.
+
+When launching your node.js app, add `--debug=5898` to the command line:
+
+    node --debug=5898 my_script.js
+
+Right click in a ST view and select 'Attach Debugger' to start debugging!
 
 ## Setup
 
@@ -14,27 +78,6 @@ Clone this repository into your Packages directory.
 To find your Packages path, bring up the console with ``ctrl-` `` and enter:
 
     print sublime.packages_path()
-
-### Project Setup
-
-The debugger requires some settings to function - namely, what you want to debug.
-I recommend making these settings per-project, however you can make them global
-defaults as well.
-
-From the `Project` menu select `Edit Project`, add the following (or merge):
-
-    "settings":
-    {
-        "stdi_provider": "v8://localhost:5898"
-    }
-
-The provider URI is the target of the debugger. In the future I'll make it more flexible/add more/etc.
-
-When launching your node.js app, add `--debug=5898` to the command line:
-
-    node --debug=5898 my_script.js
-
-Right click in a view and select 'Attach Debugger' to start debugging!
 
 ## Resources
 
