@@ -36,6 +36,17 @@ When launching your node.js app, add `--debug=5898` to the command line:
 
 Right click in a view and select 'Attach Debugger' to start debugging!
 
+## Resources
+
+* [V8 Debugger Protocol](http://code.google.com/p/v8/wiki/DebuggerProtocol)
+* [Chrome Debugger Protocol](https://developers.google.com/chrome-developer-tools/docs/protocol/1.0/debugger)
+* [WebKit Protocol](http://code.google.com/p/chromedevtools/wiki/WebKitProtocol)
+* [V8 debug-agent.cc](http://v8.googlecode.com/svn/trunk/src/debug-agent.cc)
+* [V8 debug-debugger.js](http://v8.googlecode.com/svn/trunk/src/debug-debugger.js)
+* [node.js _debugger.js](https://github.com/joyent/node/blob/master/lib/_debugger.js)
+* [WebInspector source](http://trac.webkit.org/browser#trunk/Source/WebCore/inspector/)
+* [V8 ScriptDebugServer.cpp](http://trac.webkit.org/browser/trunk/Source/WebCore/bindings/v8/ScriptDebugServer.cpp)
+
 ## Contributing
 
 Have a fix or feature? Submit a pull request - I love them!
