@@ -22,10 +22,10 @@
 
   { "caption": "-" },
 
-  {
+  /*{
     "id": "stdi_continue_to_here",
     "command": "stdi_continue_to_here"
-  },
+  },*/
 
   { "caption": "-" },
 
