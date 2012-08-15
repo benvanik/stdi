@@ -1,0 +1,8 @@
+[
+  /*{
+    "button": "button1",
+    "modifiers": ["alt"],
+    "command": "foo",
+    "press_command": "drag_select"
+  }*/
+]

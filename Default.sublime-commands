@@ -1,0 +1,65 @@
+[
+  {
+    "id": "stdi_enable_all_breakpoints",
+    "command": "stdi_toggle_all_breakpoints",
+    "args": {
+      "action": "enable"
+    },
+    "caption": "STDI: Enable All Breakpoints"
+  },
+  {
+    "id": "stdi_disable_all_breakpoints",
+    "command": "stdi_toggle_all_breakpoints",
+    "args": {
+      "action": "disable"
+    },
+    "caption": "STDI: Disable All Breakpoints"
+  },
+
+  {
+    "id": "stdi_launch_debugger",
+    "command": "stdi_launch_debugger",
+    "caption": "STDI: Launch Debugger"
+  },
+  {
+    "id": "stdi_attach_debugger",
+    "command": "stdi_attach_debugger",
+    "caption": "STDI: Attach Debugger"
+  },
+  {
+    "id": "stdi_detach_debugger",
+    "command": "stdi_detach_debugger",
+    "caption": "STDI: Detach Debugger"
+  },
+  {
+    "id": "stdi_stop_debugger",
+    "command": "stdi_stop_debugger",
+    "caption": "STDI: Stop Debugger"
+  },
+  {
+    "id": "stdi_debug_pause",
+    "command": "stdi_debug_pause",
+    "caption": "STDI: Pause/Continue"
+  },
+  {
+    "id": "stdi_debug_step_over",
+    "command": "stdi_debug_step_over",
+    "caption": "STDI: Step Over"
+  },
+  {
+    "id": "stdi_debug_step_in",
+    "command": "stdi_debug_step_in",
+    "caption": "STDI: Step In"
+  },
+  {
+    "id": "stdi_debug_step_out",
+    "command": "stdi_debug_step_out",
+    "caption": "STDI: Step Out"
+  },
+
+  {
+    "id": "stdi_evaluate",
+    "command": "stdi_evaluate",
+    "caption": "STDI: Evaluate"
+  }
+]

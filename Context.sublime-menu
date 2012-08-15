@@ -1,0 +1,49 @@
+[
+  {
+    "id": "stdi_launch_debugger",
+    "command": "stdi_launch_debugger",
+    "caption": "Launch Debugger"
+  },
+  {
+    "id": "stdi_attach_debugger",
+    "command": "stdi_attach_debugger",
+    "caption": "Attach Debugger"
+  },
+  {
+    "id": "stdi_detach_debugger",
+    "command": "stdi_detach_debugger",
+    "caption": "Detach Debugger"
+  },
+  {
+    "id": "stdi_stop_debugger",
+    "command": "stdi_stop_debugger",
+    "caption": "Stop Debugger"
+  },
+
+  { "caption": "-" },
+
+  {
+    "id": "stdi_continue_to_here",
+    "command": "stdi_continue_to_here"
+  },
+  {
+    "id": "stdi_add_breakpoint",
+    "command": "stdi_add_breakpoint",
+    "caption": "Add Breakpoint"
+  },
+  {
+    "id": "stdi_toggle_breakpoint",
+    "command": "stdi_toggle_breakpoint"
+  },
+  {
+    "id": "stdi_edit_breakpoint",
+    "command": "stdi_edit_breakpoint",
+    "caption": "Edit Breakpoint"
+  },
+  {
+    "id": "stdi_remove_breakpoint",
+    "command": "stdi_remove_breakpoint",
+    "caption": "Remove Breakpoint"
+  },
+  { "caption": "-", "id": "end" }
+]
