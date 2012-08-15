@@ -1,5 +1,5 @@
 [
-  {
+  /*{
     "id": "stdi_enable_all_breakpoints",
     "command": "stdi_toggle_all_breakpoints",
     "args": {
@@ -14,13 +14,13 @@
       "action": "disable"
     },
     "caption": "Debugger: Disable All Breakpoints"
-  },
+  },*/
 
-  {
+  /*{
     "id": "stdi_launch_debugger",
     "command": "stdi_launch_debugger",
     "caption": "Debugger: Launch Debugger"
-  },
+  },*/
   {
     "id": "stdi_attach_detach_debugger",
     "command": "stdi_attach_detach_debugger",
@@ -31,6 +31,13 @@
     "command": "stdi_stop_debugger",
     "caption": "Debugger: Stop Debugger"
   },
+
+  /*{
+    "id": "stdi_evaluate",
+    "command": "stdi_evaluate",
+    "caption": "Debugger: Evaluate"
+  },*/
+
   {
     "id": "stdi_debug_pause",
     "command": "stdi_debug_pause",
@@ -50,11 +57,5 @@
     "id": "stdi_debug_step_out",
     "command": "stdi_debug_step_out",
     "caption": "Debugger: Step Out"
-  },
-
-  {
-    "id": "stdi_evaluate",
-    "command": "stdi_evaluate",
-    "caption": "Debugger: Evaluate"
   }
 ]
