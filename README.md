@@ -25,15 +25,15 @@ From the `Project` menu select `Edit Project`, add or merge the following:
 
     "settings":
     {
-        "debug_target": "v8://localhost:5898"
+        "debug_target": "v8://localhost:5858"
     }
 
 The provider URI is the target of the debugger. In the future I'll make it more
 flexible/add more providers/etc.
 
-When launching your node.js app, add `--debug=5898` to the command line:
+When launching your node.js app, add `--debug=5858` to the command line:
 
-    node --debug=5898 my_script.js
+    node --debug=5858 my_script.js
 
 Right click in a ST view and select 'Attach Debugger' to start debugging!
 

@@ -69,7 +69,7 @@ class V8DebuggerProtocol(DebuggerProtocol):
     try:
       self._socket = socket.create_connection(address, None)
     except socket.error, e:
-      if e.errno == 10061:
+      if e.errno == 61 or e.errno == 10061:
         if self._detach_callback:
           self._detach_callback('Unable to connect')
         return
