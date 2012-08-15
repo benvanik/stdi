@@ -9,7 +9,7 @@ class State:
   DETACHED = 2
 
 
-class EventListener(object):
+class DebuggerListener(object):
   """Debugger event listener.
   Receives debugger event notifications.
   """
@@ -71,6 +71,13 @@ class Debugger(object):
   Controls a debugging session when attached to an instance.
   """
   def __init__(self, instance_info, protocol, listener, *args, **kwargs):
+    """Initializes a debugger.
+
+    Args:
+      instance_info: Target instance info.
+      protocol: Protocol used for communicating.
+      listener: DebuggerListener to receive events.
+    """
     self._instance_info = instance_info
     self._protocol = protocol
     self._protocol.set_detach_callback(self._on_detach)

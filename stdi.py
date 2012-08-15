@@ -39,22 +39,6 @@ if len(modified_modules):
 #   def callback(self, index):
 #     print index
 
-_breakpoint_file = os.path.join(sublime.packages_path(),
-                                '..',
-                                'Settings',
-                                'Breakpoints.sublime_session')
-
-
-# Cached providers, mapped by provider URI
-_providers = {}
-# Active debuggers, mapped by instance URI
-_debuggers = {}
-# The debugger for each provider, mapped by provider URI
-# TODO(benvanik): remove this - it limits things to one active session/provider
-_debuggers_by_provider = {}
-# Breakpoint list - inspects the _debuggers to maintain breakpoints
-_breakpoint_list = di.load_breakpoint_list(_breakpoint_file, _debuggers)
-
 
 def _get_syntax_name(view):
   """Gets the name of the syntax used in the given view.
@@ -67,96 +51,6 @@ def _get_syntax_name(view):
   """
   syntax = view.settings().get('syntax')
   return os.path.splitext(os.path.basename(syntax))[0]
-
-
-def _launch_debugger(target_window, provider_uri, attach):
-  """Launches a debugger.
-
-  Args:
-    target_window: Target window.
-    provider_uri: Provider URI.
-    attach: True to attach to an existing instance.
-
-  Returns:
-    A Debugger, if it could be created and did not already exist.
-  """
-  global _providers
-  global _debuggers
-  global _debuggers_by_provider
-  if provider_uri in _providers:
-    provider = _providers.get(provider_uri)
-  else:
-    provider = di.create_provider(provider_uri)
-    _providers[provider_uri] = provider
-
-  if attach:
-    print 'DEBUG: would attach'
-  else:
-    print 'DEBUG: would launch'
-
-  # TODO(benvanik): async launch/pick instance from quickpanel, etc
-  instance_info = provider.get_current_instances()[0]
-  if instance_info.uri() in _debuggers:
-    return None
-
-  listener = DebuggerListener()
-  debugger = instance_info.attach_debugger(listener)
-  debugger.set_target_window(target_window)
-  _debuggers[instance_info.uri()] = debugger
-  _debuggers_by_provider[provider_uri] = debugger
-  debugger.attach()
-
-  global _status_manager
-  _status_manager.show_message('Attaching debugger...')
-  _status_manager.update()
-
-  return debugger
-
-
-def _get_debugger_provider_uri_for_view(view):
-  """Gets the debugger provider URI for the given view.
-
-  Args:
-    view: View.
-
-  Returns:
-    A debugger provider URI, if one is defined.
-  """
-  settings = view.settings()
-  return settings.get('debug_target', None)
-
-
-def _get_debugger_for_view(view):
-  """Gets the active debugger for the given view.
-
-  Args:
-    view: View.
-
-  Returns:
-    A Debugger, if one is attached.
-  """
-  global _debuggers_by_provider
-  provider_uri = _get_debugger_provider_uri_for_view(view)
-  return _debuggers_by_provider.get(provider_uri, None)
-
-
-def _remove_debugger(debugger):
-  """Removes a debugger from the active table.
-
-  Args:
-    debugger: Debugger instance.
-  """
-  global _debuggers
-  global _debuggers_by_provider
-  instance_uri = debugger.instance_info().uri()
-  provider_uri = debugger.provider().uri()
-  if not instance_uri in _debuggers:
-    return
-  del _debuggers[instance_uri]
-  del _debuggers_by_provider[provider_uri]
-
-  global _status_manager
-  _status_manager.update()
 
 
 def _callback_when_view_loaded(view, callback):
@@ -174,13 +68,151 @@ def _callback_when_view_loaded(view, callback):
     sublime.set_timeout(lambda: _callback_when_view_loaded(view, callback), 1)
 
 
+class DebugPlugin(object):
+  """
+  """
+  def __init__(self, *args, **kwargs):
+    # Cached providers, mapped by provider URI
+    self._providers = {}
+    # Active debuggers, mapped by instance URI
+    self._debuggers = {}
+    # The debugger for each provider, mapped by provider URI
+    # TODO(benvanik): remove this - it limits things to one active session
+    self._debuggers_by_provider = {}
+
+    # Breakpoint list
+    breakpoint_file = os.path.join(sublime.packages_path(),
+                                   '..',
+                                   'Settings',
+                                   'Breakpoints.sublime_session')
+    self._breakpoint_listener = BreakpointListener(self)
+    self._breakpoint_list = di.load_breakpoint_list(breakpoint_file,
+                                                    self._debuggers,
+                                                    self._breakpoint_listener)
+
+    # Status manager
+    self._status_manager = StatusManager(self)
+
+  def debuggers(self):
+    return self._debuggers
+
+  def breakpoint_list(self):
+    return self._breakpoint_list
+
+  def status_manager(self):
+    return self._status_manager
+
+  def show_status_message(self, value):
+    """Shows a status message.
+
+    Args:
+      value: Message.
+    """
+    self._status_manager.show_message(value)
+
+  def _get_provider_for_uri(self, uri):
+    """Gets a debugging provider for a URI.
+    Creates or returns a cached provider.
+
+    Args:
+      uri: URI to get the provider for.
+
+    Returns:
+      An InstanceProvider, if one was found.
+    """
+    if uri in self._providers:
+      provider = self._providers.get(uri)
+    else:
+      provider = di.create_provider(uri)
+      self._providers[uri] = provider
+    return provider
+
+  def launch_debugger(self, target_window, provider_uri, attach):
+    """Launches a debugger.
+
+    Args:
+      target_window: Target window.
+      provider_uri: Provider URI.
+      attach: True to attach to an existing instance.
+
+    Returns:
+      A Debugger, if it could be created and did not already exist.
+    """
+    provider = self._get_provider_for_uri(provider_uri)
+
+    if attach:
+      print 'DEBUG: would attach'
+    else:
+      print 'DEBUG: would launch'
+
+    # TODO(benvanik): async launch/pick instance from quickpanel, etc
+    instance_info = provider.get_current_instances()[0]
+    if instance_info.uri() in self._debuggers:
+      return None
+
+    listener = DebuggerListener(self)
+    debugger = instance_info.attach_debugger(listener)
+    debugger.set_target_window(target_window)
+    self._debuggers[instance_info.uri()] = debugger
+    self._debuggers_by_provider[provider_uri] = debugger
+    debugger.attach()
+
+    self._status_manager.show_message('Attaching debugger...')
+    self._status_manager.update()
+
+    return debugger
+
+  def get_debugger_provider_uri_for_view(self, view):
+    """Gets the debugger provider URI for the given view.
+
+    Args:
+      view: View.
+
+    Returns:
+      A debugger provider URI, if one is defined.
+    """
+    settings = view.settings()
+    return settings.get('debug_target', None)
+
+  def get_debugger_for_view(self, view):
+    """Gets the active debugger for the given view.
+
+    Args:
+      view: View.
+
+    Returns:
+      A Debugger, if one is attached.
+    """
+    provider_uri = self.get_debugger_provider_uri_for_view(view)
+    return self._debuggers_by_provider.get(provider_uri, None)
+
+  def remove_debugger(self, debugger):
+    """Removes a debugger from the active table.
+
+    Args:
+      debugger: Debugger instance.
+    """
+    instance_uri = debugger.instance_info().uri()
+    provider_uri = debugger.provider().uri()
+    if not instance_uri in self._debuggers:
+      return
+    del self._debuggers[instance_uri]
+    del self._debuggers_by_provider[provider_uri]
+    self._status_manager.update()
+
+
 class StatusManager(object):
   """Status UI manager.
   Controls view and window status bars. Views should attach to the status
   manager to get relevant information.
   """
-  def __init__(self, *args, **kwargs):
-    pass
+  def __init__(self, plugin, *args, **kwargs):
+    """Initializes the status manager.
+
+    Args:
+      plugin: Parent plugin.
+    """
+    self._plugin = plugin
 
   def show_message(self, value):
     """Shows a temporary message in the status bar.
@@ -220,7 +252,7 @@ class StatusManager(object):
     Args:
       view: View.
     """
-    debugger = _get_debugger_for_view(view)
+    debugger = self._plugin.get_debugger_for_view(view)
     if not debugger:
       view.erase_status('stdi')
       return
@@ -229,44 +261,47 @@ class StatusManager(object):
     view.set_status('stdi', message)
 
 
-# Status manager
-_status_manager = StatusManager()
-def _show_status_message(value):
-  """Shows a status message.
-
-  Args:
-    value: Message.
-  """
-  global _status_manager
-  _status_manager.show_message(value)
-
-
 class EventListener(sublime_plugin.EventListener):
   def on_post_save(self, view):
-    global _debuggers
     # Notify all active debuggers that the given file has changed - they can
     # do what they want with that information
     uri = view.file_name()
     if not uri:
       return
     new_source = view.substr(sublime.Region(0, view.size()))
-    for debugger in _debuggers.values():
+    for debugger in plugin().debuggers().values():
       debugger.change_source(uri, new_source)
 
   def on_activated(self, view):
-    global _status_manager
-    _status_manager.update_view(view)
+    plugin().status_manager().update_view(view)
 
   def on_deactivated(self, view):
-    global _status_manager
-    _status_manager.update_view(view)
+    plugin().status_manager().update_view(view)
 
 
-class DebuggerListener(di.EventListener):
+class BreakpointListener(di.BreakpointListener):
+  """Handles breakpoint list events.
+  """
+  def __init__(self, plugin, *args, **kwargs):
+    super(BreakpointListener, self).__init__(*args, **kwargs)
+    self._plugin = plugin
+
+  def on_breakpoint_add(self, breakpoint):
+    print 'EVENT: on_breakpoint_add'
+
+  def on_breakpoint_change(self, breakpoint):
+    print 'EVENT: on_breakpoint_change'
+
+  def on_breakpoint_remove(self, breakpoint):
+    print 'EVENT: on_breakpoint_remove'
+
+
+class DebuggerListener(di.DebuggerListener):
   """Handles debugger events.
   """
-  def __init__(self, *args, **kwargs):
+  def __init__(self, plugin, *args, **kwargs):
     super(DebuggerListener, self).__init__(*args, **kwargs)
+    self._plugin = plugin
     self._active_location = None
 
   def on_attach(self, *args, **kwargs):
@@ -274,16 +309,16 @@ class DebuggerListener(di.EventListener):
 
   def on_detach(self, reason, *args, **kwargs):
     print 'EVENT: on_detach(%s)' % (reason)
-    _remove_debugger(self.debugger())
+    plugin().remove_debugger(self.debugger())
 
+    status_manager = self._plugin.status_manager()
     detach_message = 'Detached'
     if reason:
       detach_message += ': %s' % (reason)
-    global _status_manager
-    _status_manager.show_message(detach_message)
+    status_manager.show_message(detach_message)
     # TODO(benvanik): don't show errors, they are annoying
     if reason:
-      _status_manager.show_error(detach_message)
+      status_manager.show_error(detach_message)
 
   def on_suspend(self, *args, **kwargs):
     print 'EVENT: on_suspend'
@@ -336,7 +371,7 @@ class _WindowCommand(sublime_plugin.WindowCommand):
     view = self.window.active_view()
     if not view:
       return None
-    return _get_debugger_provider_uri_for_view(view)
+    return plugin().get_debugger_provider_uri_for_view(view)
 
   def has_debugger_configured(self):
     """Whether a debugger for the current view has been configured.
@@ -361,7 +396,7 @@ class _WindowCommand(sublime_plugin.WindowCommand):
     if not provider_uri:
       print 'STDI: no debug provider configured'
       return None
-    return _launch_debugger(self.window, provider_uri, attach)
+    return plugin().launch_debugger(self.window, provider_uri, attach)
 
   def get_debugger(self):
     """Gets the active debugger for the active window/view.
@@ -371,7 +406,7 @@ class _WindowCommand(sublime_plugin.WindowCommand):
     """
     view = self.window.active_view()
     if view:
-      return _get_debugger_for_view(view)
+      return plugin().get_debugger_for_view(view)
     else:
       return None
 
@@ -431,10 +466,10 @@ class StdiDetachDebugger(_ControlCommand):
   """Detach debugger and leave running.
   """
   def run(self):
-    _show_status_message('Detaching debugger...')
+    plugin().show_status_message('Detaching debugger...')
     debugger = self.get_debugger()
     debugger.detach(terminate=False)
-    _remove_debugger(debugger)
+    plugin().remove_debugger(debugger)
 
   def is_enabled(self):
     return self.get_debugger()
@@ -444,10 +479,10 @@ class StdiStopDebugger(_ControlCommand):
   """Detach debugger and terminate.
   """
   def run(self):
-    _show_status_message('Stopping debugger...')
+    plugin().show_status_message('Stopping debugger...')
     debugger = self.get_debugger()
     debugger.detach(terminate=True)
-    _remove_debugger(debugger)
+    plugin().remove_debugger(debugger)
 
   def is_enabled(self):
     return self.get_debugger()
@@ -459,10 +494,10 @@ class StdiDebugPauseCommand(_ControlCommand):
   def run(self):
     debugger = self.get_debugger()
     if debugger.is_running():
-      _show_status_message('Pausing...')
+      plugin().show_status_message('Pausing...')
       debugger.suspend()
     else:
-      _show_status_message('Resuming...')
+      plugin().show_status_message('Resuming...')
       debugger.resume()
 
   def is_enabled(self):
@@ -475,7 +510,7 @@ class StdiDebugStepOverCommand(_ControlCommand):
   """Debugger control: step over.
   """
   def run(self):
-    _show_status_message('Stepping over...')
+    plugin().show_status_message('Stepping over...')
     debugger = self.get_debugger()
     debugger.step_over()
 
@@ -488,7 +523,7 @@ class StdiDebugStepInCommand(_ControlCommand):
   """Debugger control: step in.
   """
   def run(self):
-    _show_status_message('Stepping in...')
+    plugin().show_status_message('Stepping in...')
     debugger = self.get_debugger()
     debugger.step_in()
 
@@ -501,7 +536,7 @@ class StdiDebugStepOutCommand(_ControlCommand):
   """Debugger control: step out.
   """
   def run(self):
-    _show_status_message('Stepping out...')
+    plugin().show_status_message('Stepping out...')
     debugger = self.get_debugger()
     debugger.step_out()
 
@@ -516,7 +551,7 @@ class StdiEvaluate(_WindowCommand):
   def run(self):
     debugger = self.get_debugger()
     # TODO(benvanik): show an input panel, ask for expression
-    #_show_status_message('Evaluating expression...')
+    #plugin().show_status_message('Evaluating expression...')
     #debugger.evaluate()
 
   def is_enabled(self):
@@ -546,7 +581,7 @@ class _ContextCommand(_WindowCommand):
     if not view or not len(view.sel()):
       return None
     sel = view.sel()[0]
-    (line, column) = view.rowcol(sel.begin())
+    (line, column) = view.rowcol(sel.a)
     if not include_column:
       column = 0
     return (self.get_view_uri(), line, column)
@@ -589,23 +624,23 @@ class _BreakpointContextCommand(_ContextCommand):
     location = self.get_location()
     if not location:
       return
-    global _breakpoint_list
-    return _breakpoint_list.get_breakpoint_at_location(location)
+    breakpoint_list = plugin().breakpoint_list()
+    breakpoint_list.get_breakpoint_at_location(location)
 
 
 class StdiAddRemoveBreakpointCommand(_BreakpointContextCommand):
   """Adds a new breakpoint on the clicked line.
   """
   def run(self):
-    global _breakpoint_list
     location = self.get_location()
     if not location:
       return
-    breakpoint = _breakpoint_list.get_breakpoint_at_location(location)
+    breakpoint_list = plugin().breakpoint_list()
+    breakpoint = breakpoint_list.get_breakpoint_at_location(location)
     if not breakpoint:
-      _breakpoint_list.create_breakpoint_at_location(location)
+      breakpoint_list.create_breakpoint_at_location(location)
     else:
-      _breakpoint_list.remove_breakpoint(breakpoint)
+      breakpoint_list.remove_breakpoint(breakpoint)
 
   def description(self):
     breakpoint = self.get_line_breakpoint()
@@ -653,3 +688,24 @@ class StdiEditBreakpointCommand(_BreakpointContextCommand):
     if not super(StdiEditBreakpointCommand, self).is_visible():
       return False
     return self.get_line_breakpoint()
+
+
+class StdiPositionedContextMenuCommand(sublime_plugin.TextCommand):
+  """Very hacky way of moving selection when the user right clicks.
+  This enables us to right-click -> add breakpoint at the point where the
+  user actually clicked, instead of wherever their selection happened to be.
+  """
+  def run_(self, args):
+    self.view.run_command("drag_select", {'event': args['event']})
+    # new_sel = self.view.sel()
+    # click_point = new_sel[0].a
+    # (line, column) = self.view.rowcol(click_point)
+    # print '%s:%s (%s)' % (line + 1, column + 1, click_point)
+    self.view.run_command('context_menu', args)
+
+
+# Global plugin
+_plugin = DebugPlugin()
+def plugin():
+  global _plugin
+  return _plugin

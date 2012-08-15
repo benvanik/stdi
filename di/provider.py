@@ -43,7 +43,7 @@ class InstanceInfo(object):
     this function returns.
 
     Args:
-      listener: An EventListener to receive events.
+      listener: An DebuggerListener to receive events.
 
     Returns:
       A Debugger attached to the given instance, if it could be attached.
@@ -93,7 +93,7 @@ class InstanceProvider(object):
 
     Args:
       instance_info: Instance to attach to.
-      listener: An EventListener to receive events.
+      listener: An DebuggerListener to receive events.
 
     Returns:
       A Debugger attached to the given instance, if it could be attached.

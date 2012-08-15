@@ -8,19 +8,57 @@ import os
 import sublime
 
 
+class BreakpointListener(object):
+  """Breakpoint list event listener.
+  Receives breakpoint event notifications.
+  """
+  def __init__(self, *args, **kwargs):
+    self._breakpoint_list = None
+
+  def breakpoint_list(self):
+    return self._breakpoint_list
+
+  def on_breakpoint_add(self, breakpoint):
+    """Handles breakpoint additions.
+
+    Args:
+      breakpoint: Breakpoint that was added.
+    """
+    pass
+
+  def on_breakpoint_change(self, breakpoint):
+    """Handles breakpoint changes.
+
+    Args:
+      breakpoint: Breakpoint that changed.
+    """
+    pass
+
+  def on_breakpoint_remove(self, breakpoint):
+    """Handles breakpoint removals.
+
+    Args:
+      breakpoint: Breakpoint that was removed.
+    """
+    pass
+
+
 class BreakpointList(object):
   """A serializable list of breakpoints.
   Breakpoints are retained across debugging sessions in this type, and by
   ensuring all breakpoint management flows through this list it's possible to
   have consistent UI preserved across sessions.
   """
-  def __init__(self, debuggers, *args, **kwargs):
+  def __init__(self, debuggers, listener, *args, **kwargs):
     """Initializes a breakpoint list.
 
     Args:
       debuggers: A mutable list of debuggers.
+      listener: BreakpointListener to receive events.
     """
     self._debuggers = debuggers
+    self._listener = listener
+    self._listener._breakpoint_list = self
     self._is_dirty = True
     self._save_pending = False
     self._path = None
@@ -107,6 +145,21 @@ class BreakpointList(object):
           'breakpoints': breakpoint_objs,
           }))
 
+  def _add_breakpoint(self, breakpoint):
+    """Adds a breakpoint.
+    The breakpoint must already be initialized.
+
+    Args:
+      breakpoint: Breakpoint to add.
+    """
+    self._breakpoints[breakpoint.id()] = breakpoint
+    if breakpoint.type() == 'location':
+      self._breakpoints_by_location[breakpoint.location()] = breakpoint
+    elif breakpoint.type() == 'function':
+      self._breakpoints_by_function[breakpoint.function_name()] = breakpoint
+    self._invalidate()
+    self._listener.on_breakpoint_add(breakpoint)
+
   def create_breakpoint_at_location(self, location):
     """Creates a new breakpoint for a location.
 
@@ -120,10 +173,7 @@ class BreakpointList(object):
     if breakpoint:
       return None
     breakpoint = Breakpoint(self, self._get_next_id(), location=location)
-    self._breakpoints[breakpoint.id()] = breakpoint
-    self._breakpoints_by_location[location] = breakpoint
-    self._invalidate()
-    # TODO(benvanik): add to debuggers
+    self._add_breakpoint(breakpoint)
     return breakpoint
 
   def get_breakpoint_at_location(self, location):
@@ -151,10 +201,7 @@ class BreakpointList(object):
       return None
     breakpoint = Breakpoint(self, self._get_next_id(),
                             function_name=function_name)
-    self._breakpoints[breakpoint.id()] = breakpoint
-    self._breakpoints_by_function[function_name] = breakpoint
-    self._invalidate()
-    # TODO(benvanik): add to debuggers
+    self._add_breakpoint(breakpoint)
     return breakpoint
 
   def get_breakpoint_for_function(self, function_name):
@@ -182,6 +229,7 @@ class BreakpointList(object):
       del self._breakpoints_by_function[breakpoint.function_name()]
     del self._breakpoints[breakpoint.id()]
     self._invalidate()
+    self._listener.on_breakpoint_remove(breakpoint)
     # TODO(benvanik): remove from debuggers
 
   def _invalidate(self):
@@ -203,6 +251,7 @@ class BreakpointList(object):
       breakpoint: Breakpoint that has changed.
     """
     self._invalidate()
+    self._listener.on_breakpoint_change(breakpoint)
     print 'TODO: invalidate breakpoint'
 
 

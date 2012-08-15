@@ -5,4 +5,9 @@
     "command": "foo",
     "press_command": "drag_select"
   }*/
+  {
+    "button": "button2",
+    "modifiers": [],
+    "command": "stdi_positioned_context_menu"
+  }
 ]

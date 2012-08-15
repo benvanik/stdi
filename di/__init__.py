@@ -6,8 +6,9 @@ __author__ = 'benvanik@google.com (Ben Vanik)'
 from urlparse import urlparse
 
 import breakpoints
+from breakpoints import BreakpointListener
 import debugger
-from debugger import EventListener
+from debugger import DebuggerListener
 import provider
 import util
 import v8
@@ -17,7 +18,8 @@ __all__ = [
     'create_provider',
     'load_breakpoint_list',
     'cleanup_module',
-    'EventListener'
+    'BreakpointListener',
+    'DebuggerListener',
     ]
 
 
@@ -44,7 +46,7 @@ def create_provider(uri):
   return provider_type(uri)
 
 
-def load_breakpoint_list(path, debuggers):
+def load_breakpoint_list(path, debuggers, listener):
   """Loads (or creates) a breakpoint list.
   A breakpoint list should live for the entire lifetime of the editor and be
   used to manage all breakpoint related tasks.
@@ -52,11 +54,12 @@ def load_breakpoint_list(path, debuggers):
   Args:
     path: Breakpoint settings file path.
     debuggers: A mutable list of debuggers.
+    listener: BreakpointListener to receive events.
 
   Returns:
     A BreakpointList for managing breakpoints across all debuggers.
   """
-  breakpoint_list = breakpoints.BreakpointList(debuggers)
+  breakpoint_list = breakpoints.BreakpointList(debuggers, listener)
   breakpoint_list.load(path)
   return breakpoint_list
 
