@@ -160,7 +160,7 @@ class DebugPlugin(object):
         for instance_info in instance_infos:
           items.append([
               instance_info.display_name(),
-              instance_info.uri(),
+              instance_info.display_info(),
               ])
         def _item_selected(index):
           if index == -1:

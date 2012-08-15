@@ -32,6 +32,13 @@ def _transform_node_source(source):
 
 class V8InstanceProvider(InstanceProvider):
   """An instance provider that represents a v8 process.
+  V8 must be started with the '--debug' flag (or '--debug=N' to specify a port).
+  Provider URIs are formed by:
+    v8://[hostname]:[port]
+  So that the following node command line:
+    node --debug=5858 script.js
+  Results in the following provider URI:
+    v8://localhost:5858
   """
   def __init__(self, uri, *args, **kwargs):
     super(V8InstanceProvider, self).__init__(uri, *args, **kwargs)

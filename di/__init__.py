@@ -12,6 +12,7 @@ from debugger import DebuggerListener
 import provider
 import util
 import v8
+import webkit
 
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
 
 provider_types = {
     'v8': v8.V8InstanceProvider,
+    'webkit': webkit.WebKitInstanceProvider,
     }
 
 

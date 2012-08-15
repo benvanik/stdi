@@ -82,12 +82,17 @@ TODO: support script mapping so DART/coffeescript?/etc work
 
 #### V8/node.js
 
-Working! Launch with `--debug` and put the target in your ST project settings
-as `v8://localhost:port`.
+Working!
 
-#### Chrome
+* node.js command line: `node --debug=5858 script.js`
+* Project setting: `debug_target: "v8://localhost:5858"`
 
-TODO
+#### Chrome (WebKit?)
+
+Partially implemented; not yet working.
+
+* Chrome command line: `chrome --remote-debugging-port=9222`
+* Project setting: `debug_target: "webkit://localhost:9222"`
 
 ### Others
 

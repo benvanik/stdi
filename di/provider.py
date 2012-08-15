@@ -19,6 +19,7 @@ class InstanceInfo(object):
     self._provider = provider
     self._uri = uri
     self._display_name = None
+    self._display_info = None
 
   def provider(self):
     return self._provider
@@ -31,6 +32,16 @@ class InstanceInfo(object):
 
   def set_display_name(self, value):
     self._display_name = value
+
+  def display_info(self):
+    if self._display_info:
+      return self._display_info
+    if not self._display_name:
+      return None
+    return self._uri
+
+  def set_display_info(self, value):
+    self._display_info = value
 
   def is_attached(self):
     return False
