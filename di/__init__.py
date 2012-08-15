@@ -46,20 +46,19 @@ def create_provider(uri):
   return provider_type(uri)
 
 
-def load_breakpoint_list(path, debuggers, listener):
+def load_breakpoint_list(path, listener):
   """Loads (or creates) a breakpoint list.
   A breakpoint list should live for the entire lifetime of the editor and be
   used to manage all breakpoint related tasks.
 
   Args:
     path: Breakpoint settings file path.
-    debuggers: A mutable list of debuggers.
     listener: BreakpointListener to receive events.
 
   Returns:
     A BreakpointList for managing breakpoints across all debuggers.
   """
-  breakpoint_list = breakpoints.BreakpointList(debuggers, listener)
+  breakpoint_list = breakpoints.BreakpointList(listener)
   breakpoint_list.load(path)
   return breakpoint_list
 

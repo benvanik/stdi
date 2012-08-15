@@ -87,14 +87,13 @@ class DebugPlugin(object):
                                    'Breakpoints.sublime_session')
     self._breakpoint_listener = BreakpointListener(self)
     self._breakpoint_list = di.load_breakpoint_list(breakpoint_file,
-                                                    self._debuggers,
                                                     self._breakpoint_listener)
 
     # Status manager
     self._status_manager = StatusManager(self)
 
   def debuggers(self):
-    return self._debuggers
+    return self._debuggers.values()
 
   def breakpoint_list(self):
     return self._breakpoint_list
@@ -269,7 +268,7 @@ class EventListener(sublime_plugin.EventListener):
     if not uri:
       return
     new_source = view.substr(sublime.Region(0, view.size()))
-    for debugger in plugin().debuggers().values():
+    for debugger in plugin().debuggers():
       debugger.change_source(uri, new_source)
 
   def on_activated(self, view):
@@ -288,12 +287,18 @@ class BreakpointListener(di.BreakpointListener):
 
   def on_breakpoint_add(self, breakpoint):
     print 'EVENT: on_breakpoint_add'
+    for debugger in plugin().debuggers():
+      debugger.add_breakpoint(breakpoint)
 
   def on_breakpoint_change(self, breakpoint):
     print 'EVENT: on_breakpoint_change'
+    for debugger in plugin().debuggers():
+      debugger.change_breakpoint(breakpoint)
 
   def on_breakpoint_remove(self, breakpoint):
     print 'EVENT: on_breakpoint_remove'
+    for debugger in plugin().debuggers():
+      debugger.remove_breakpoint(breakpoint)
 
 
 class DebuggerListener(di.DebuggerListener):
@@ -306,6 +311,11 @@ class DebuggerListener(di.DebuggerListener):
 
   def on_attach(self, *args, **kwargs):
     print 'EVENT: on_attach'
+    # Add all breakpoints
+    debugger = self.debugger()
+    breakpoint_list = plugin().breakpoint_list()
+    for breakpoint in breakpoint_list.breakpoints():
+      debugger.add_breakpoint(breakpoint)
 
   def on_detach(self, reason, *args, **kwargs):
     print 'EVENT: on_detach(%s)' % (reason)
@@ -328,13 +338,15 @@ class DebuggerListener(di.DebuggerListener):
 
   def on_break(self, location, breakpoints_hit, snapshot, *args, **kwargs):
     print 'EVENT: on_break(%s@%s:%s)' % (location[0],
-                                         location[1], location[2])
+                                         location[1] + 1, location[2] + 1)
+    if len(breakpoints_hit):
+      print '  breakpoints hit: %s' % (breakpoints_hit)
     self.set_active_location(location)
 
   def on_exception(self, location, is_uncaught, exception, snapshot,
                    *args, **kwargs):
     print 'EVENT: on_exception(%s@%s:%s)' % (location[0],
-                                             location[1], location[2])
+                                             location[1] + 1, location[2] + 1)
     self.set_active_location(location)
 
   def active_location(self):
@@ -639,8 +651,12 @@ class StdiAddRemoveBreakpointCommand(_BreakpointContextCommand):
     breakpoint = breakpoint_list.get_breakpoint_at_location(location)
     if not breakpoint:
       breakpoint_list.create_breakpoint_at_location(location)
+      plugin().show_status_message(
+          'Added breakpoint at line %s' % (location[1] + 1))
     else:
       breakpoint_list.remove_breakpoint(breakpoint)
+      plugin().show_status_message(
+          'Removed breakpoint at line %s' % (location[1] + 1))
 
   def description(self):
     breakpoint = self.get_line_breakpoint()

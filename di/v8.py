@@ -145,6 +145,42 @@ class V8DebuggerProtocol(DebuggerProtocol):
         'filter': uri,
         }, _got_scripts)
 
+  def add_breakpoint(self, breakpoint, callback):
+    print 'V8: add breakpoint %s' % (breakpoint.id())
+    if breakpoint.type() == 'location':
+      breakpoint_type = 'script'
+      location = breakpoint.location()
+      (target, target_line, target_column) = location
+    elif breakpoint.type() == 'function':
+      breakpoint_type = 'function'
+      target = breakpoint.function_name()
+      target_line = 0
+      target_column = 0
+    self._send_command('setbreakpoint', {
+        'type': breakpoint_type,
+        'target': target,
+        'line': target_line,
+        'column': target_column,
+        'enabled': breakpoint.is_enabled(),
+        'condition': breakpoint.condition(),
+        'ignoreCount': breakpoint.ignore_count(),
+        }, lambda response: callback(response))
+
+  def change_breakpoint(self, protocol_id, breakpoint, callback):
+    print 'V8: change breakpoint p%s/%s' % (protocol_id, breakpoint.id())
+    self._send_command('changebreakpoint', {
+        'breakpoint': protocol_id,
+        'enabled': breakpoint.is_enabled(),
+        'condition': breakpoint.condition(),
+        'ignoreCount': breakpoint.ignore_count(),
+        }, lambda response: callback(response))
+
+  def remove_breakpoint(self, protocol_id, callback):
+    print 'V8: remove breakpoint p%s' % (protocol_id)
+    self._send_command('clearbreakpoint', {
+        'breakpoint': protocol_id,
+        }, lambda response: callback(response))
+
   def _send_command(self, command, arguments=None, callback=None):
     """Sends a command to the debugger.
 
@@ -225,9 +261,16 @@ class V8DebuggerProtocol(DebuggerProtocol):
     # TODO(benvanik): a cleaner way of adding properties/etc
     response_type = ProtocolResponse
     kwargs = {}
-    # if recv_obj.command == 'evaluate':
+    response_command = recv_obj.get('command', '')
+    # if response_command == 'evaluate':
     #   response_type = EvaluateResponse
     #   kwargs = {}
+    if response_command == 'setbreakpoint':
+      response_type = AddBreakpointResponse
+      # TODO(benvanik): extract 'actual_locations': ['column':, 'line':,]
+      kwargs = {
+          'protocol_id': body['breakpoint'],
+          }
     response = response_type(*args, **kwargs)
 
     callback = self._pending_callbacks.get(seq_id, None)
@@ -245,19 +288,14 @@ class V8DebuggerProtocol(DebuggerProtocol):
     body = recv_obj['body']
 
     # Gather breakpoints
-    breakpoints = []
     breakpoint_ids = body.get('breakpoints', [])
-    for breakpoint_id in breakpoint_ids:
-      print 'TODO: lookup breakpoint by bpid %s' % (breakpoint_id)
-      #breakpoints.append(None)
-      pass
 
     # Fire event
     source = (
         body['script']['name'],
         body['sourceLine'],
         body['sourceColumn'])
-    event = BreakEvent(self, source, breakpoints)
+    event = BreakEvent(self, source, breakpoint_ids)
     if self._break_callback:
       self._break_callback(event)
 

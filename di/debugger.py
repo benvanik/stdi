@@ -87,6 +87,14 @@ class Debugger(object):
     self._listener._debugger = self
     self._target_window = None
 
+    # Maps of Breakpoint.id() -> protocol IDs and vs.
+    self._breakpoint_to_protocol = {}
+    self._protocol_to_breakpoint = {}
+    # A queue of pending breakpoint commands as (type, breakpoint)
+    # The queue is used to make change/removes wait until adds have completed
+    # and an ID mapping exists
+    self._breakpoint_queue = []
+
     self._state = State.ATTACHING
     self._is_running = False
 
@@ -170,9 +178,15 @@ class Debugger(object):
     print 'DEBUGGER: break event'
     snapshot = None
     self._set_is_running(False)
+    breakpoints = []
+    protocol_ids = event.breakpoint_ids()
+    for protocol_id in protocol_ids:
+      breakpoint = self._protocol_to_breakpoint.get(protocol_id, None)
+      if breakpoint:
+        breakpoints.append(breakpoint)
     self._listener.on_break(
         (event.source_url(), event.source_line(), event.source_column()),
-        event.breakpoints(),
+        breakpoints,
         snapshot)
 
   def _on_exception(self, event, *args, **kwargs):
@@ -276,4 +290,73 @@ class Debugger(object):
     print 'DEBUGGER: changed source'
     # TODO(benvanik): pass up the delta to the listener - it may need to
     #                 highlight files if changes could not be made/etc
+    # TODO(benvanik): breakpoint fixup?
     self._update_state(response)
+
+  def add_breakpoint(self, breakpoint):
+    """Adds a breakpoint to the debugger.
+
+    Args:
+      breakpoint: Breakpoint to add.
+    """
+    print 'DEBUGGER: add breakpoint'
+    def _on_add_breakpoint(response, *args, **kwargs):
+      # TODO(benvanik): update actual location
+      breakpoint_id = breakpoint.id()
+      protocol_id = response.protocol_id()
+      self._breakpoint_to_protocol[breakpoint_id] = protocol_id
+      self._protocol_to_breakpoint[protocol_id] = breakpoint
+      self._pump_breakpoint_queue()
+      self._update_state(response)
+    self._protocol.add_breakpoint(breakpoint, _on_add_breakpoint)
+
+  def change_breakpoint(self, breakpoint):
+    """Updates a breakpoint that has changed.
+
+    Args:
+      breakpoint: Breakpoint that changed.
+    """
+    print 'DEBUGGER: change breakpoint'
+    self._breakpoint_queue.append(('change', breakpoint))
+    self._pump_breakpoint_queue()
+
+  def _on_change_breakpoint(self, response, *args, **kwargs):
+    print 'DEBUGGER: changed breakpoint'
+    self._update_state(response)
+
+  def remove_breakpoint(self, breakpoint):
+    """Removes a breakpoint from the debugger.
+
+    Args:
+      breakpoint: Breakpoint to remove.
+    """
+    print 'DEBUGGER: remove breakpoint'
+    self._breakpoint_queue.append(('remove', breakpoint))
+    self._pump_breakpoint_queue()
+
+  def _on_remove_breakpoint(self, response, *args, **kwargs):
+    print 'DEBUGGER: removed breakpoint'
+    self._update_state(response)
+
+  def _pump_breakpoint_queue(self):
+    """Executes all breakpoint queue entries until the first without a mapping.
+    This should be called after every entry is added to ensure they are all
+    flushed.
+    """
+    while len(self._breakpoint_queue):
+      entry = self._breakpoint_queue[0]
+      breakpoint = entry[1]
+      protocol_id = self._breakpoint_to_protocol.get(breakpoint.id(), None)
+      if protocol_id == None:
+        break
+      if entry[0] == 'change':
+        self._protocol.change_breakpoint(protocol_id, breakpoint,
+                                         self._on_change_breakpoint)
+      elif entry[0] == 'remove':
+        self._protocol.remove_breakpoint(protocol_id,
+                                         self._on_remove_breakpoint)
+        del self._breakpoint_to_protocol[breakpoint.id()]
+        del self._protocol_to_breakpoint[protocol_id]
+      self._breakpoint_queue.pop(0)
+
+  # TODO(benvanik): toggle all breakpoints

@@ -98,6 +98,35 @@ class DebuggerProtocol(object):
     """
     raise NotImplementedError()
 
+  def add_breakpoint(self, breakpoint, callback):
+    """Adds a breakpoint to the debugger.
+
+    Args:
+      breakpoint: Breakpoint to add.
+      callback: A function to call when the add completes. Inspect for the
+                protocol ID used in change/remove requests.
+    """
+    raise NotImplementedError()
+
+  def change_breakpoint(self, protocol_id, breakpoint, callback):
+    """Updates a breakpoint that has changed.
+
+    Args:
+      protocol_id: Breakpoint protocol ID.
+      breakpoint: Breakpoint that changed.
+      callback: A function to call when the change completes.
+    """
+    raise NotImplementedError()
+
+  def remove_breakpoint(self, protocol_id, callback):
+    """Removes a breakpoint from the debugger.
+
+    Args:
+      protocol_id: Breakpoint protocol ID.
+      callback: A function to call when the remove completes.
+    """
+    raise NotImplementedError()
+
 
 class ProtocolResponse(object):
   """A response to a request made to a protocol.
@@ -185,6 +214,30 @@ class ChangeSourceResponse(ProtocolResponse):
     # }
 
 
+class AddBreakpointResponse(ProtocolResponse):
+  """A response to add breakpoint requests.
+  """
+  def __init__(self, protocol, is_running, is_success, error_message, body,
+               protocol_id, *args, **kwargs):
+    """Initializes an add breakpoint response.
+
+    Args:
+      protocol: The protocol that this response is from.
+      is_running: True if the VM is running.
+      is_success: True if the requests was successful.
+      error_message: An error message, if not successful.
+      body: Raw body. Implementation-specific.
+      protocol_id: Breakpoint protocol ID.
+    """
+    super(AddBreakpointResponse, self).__init__(
+        protocol, is_running, is_success, error_message, body, *args, **kwargs)
+    self._protocol_id = protocol_id
+    # TODO(benvanik): actual location line/col
+
+  def protocol_id(self):
+    return self._protocol_id
+
+
 class ProtocolEvent(object):
   """An event fired by the protocol.
   """
@@ -211,19 +264,19 @@ class ProtocolEvent(object):
 class BreakEvent(ProtocolEvent):
   """An event indicating that a break occurred.
   """
-  def __init__(self, protocol, source, breakpoints, *args, **kwargs):
+  def __init__(self, protocol, source, breakpoint_ids, *args, **kwargs):
     """Initializes a break protocol event.
 
     Args:
       protocol: The protocol that fired this event.
       source: A tuple of (url, line, column).
-      breakpoints: A list of breakpoints that were hit, if any
+      breakpoint_ids: A list of breakpoints that were hit, if any.
     """
     super(BreakEvent, self).__init__(protocol, source, *args, **kwargs)
-    self._breakpoints = breakpoints
+    self._breakpoint_ids = breakpoint_ids
 
-  def breakpoints(self):
-    return self._breakpoints
+  def breakpoint_ids(self):
+    return self._breakpoint_ids
 
 
 class ExceptionEvent(ProtocolEvent):

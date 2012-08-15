@@ -49,14 +49,12 @@ class BreakpointList(object):
   ensuring all breakpoint management flows through this list it's possible to
   have consistent UI preserved across sessions.
   """
-  def __init__(self, debuggers, listener, *args, **kwargs):
+  def __init__(self, listener, *args, **kwargs):
     """Initializes a breakpoint list.
 
     Args:
-      debuggers: A mutable list of debuggers.
       listener: BreakpointListener to receive events.
     """
-    self._debuggers = debuggers
     self._listener = listener
     self._listener._breakpoint_list = self
     self._is_dirty = True
@@ -66,6 +64,9 @@ class BreakpointList(object):
     self._breakpoints = {}
     self._breakpoints_by_location = {}
     self._breakpoints_by_function = {}
+
+  def breakpoints(self):
+    return self._breakpoints.values()
 
   def _get_next_id(self):
     """Gets the next ID that can be used for a breakpoint.
@@ -230,7 +231,6 @@ class BreakpointList(object):
     del self._breakpoints[breakpoint.id()]
     self._invalidate()
     self._listener.on_breakpoint_remove(breakpoint)
-    # TODO(benvanik): remove from debuggers
 
   def _invalidate(self):
     """Marks the list as needing a save.
