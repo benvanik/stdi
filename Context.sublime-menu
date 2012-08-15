@@ -26,18 +26,26 @@
     "id": "stdi_continue_to_here",
     "command": "stdi_continue_to_here"
   },
-  {
-    "id": "stdi_add_remove_breakpoint",
-    "command": "stdi_add_remove_breakpoint"
-  },
+
+  { "caption": "-" },
+
   {
     "id": "stdi_toggle_breakpoint",
     "command": "stdi_toggle_breakpoint"
   },
   {
-    "id": "stdi_edit_breakpoint",
-    "command": "stdi_edit_breakpoint",
-    "caption": "Edit Breakpoint"
+    "id": "stdi_edit_breakpoint_condition",
+    "command": "stdi_edit_breakpoint_condition"
   },
+  {
+    "id": "stdi_ignore_breakpoint",
+    "command": "stdi_ignore_breakpoint",
+    "caption": "Ignore Breakpoint..."
+  },
+  {
+    "id": "stdi_add_remove_breakpoint",
+    "command": "stdi_add_remove_breakpoint"
+  },
+
   { "caption": "-", "id": "end" }
 ]

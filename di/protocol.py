@@ -118,6 +118,16 @@ class DebuggerProtocol(object):
     """
     raise NotImplementedError()
 
+  def ignore_breakpoint(self, protocol_id, ignore_count, callback):
+    """Ignores a breakpoint for a given number of hits.
+
+    Args:
+      protocol_id: Breakpoint protocol ID.
+      ignore_count: Number of hits to ignore.
+      callback: A function to call when the ignore acknowledges.
+    """
+    raise NotImplementedError()
+
   def remove_breakpoint(self, protocol_id, callback):
     """Removes a breakpoint from the debugger.
 

@@ -60,10 +60,10 @@ def _callback_when_view_loaded(view, callback):
 
   Args:
     view: View.
-    callback: Callback.
+    callback: Callback, receives the view as the only parameter.
   """
   if not view.is_loading():
-    callback()
+    callback(view)
   else:
     sublime.set_timeout(lambda: _callback_when_view_loaded(view, callback), 1)
 
@@ -362,8 +362,9 @@ class DebuggerListener(di.DebuggerListener):
     window = self.debugger().target_window()
     view = window.open_file(translated_path, sublime.ENCODED_POSITION)
     _callback_when_view_loaded(view, self._foo)
-  def _foo(self):
+  def _foo(self, view):
     print 'view opened and loaded'
+    view.window().focus_view(view)
 
   def clear_active_location(self):
     if self._active_location:
@@ -637,7 +638,7 @@ class _BreakpointContextCommand(_ContextCommand):
     if not location:
       return
     breakpoint_list = plugin().breakpoint_list()
-    breakpoint_list.get_breakpoint_at_location(location)
+    return breakpoint_list.get_breakpoint_at_location(location)
 
 
 class StdiAddRemoveBreakpointCommand(_BreakpointContextCommand):
@@ -690,18 +691,61 @@ class StdiToggleBreakpointCommand(_BreakpointContextCommand):
       return 'Disable Breakpoint'
 
 
-class StdiEditBreakpointCommand(_BreakpointContextCommand):
-  """Edits the breakpoint on the clicked line.
+class StdiEditBreakpointConditionCommand(_BreakpointContextCommand):
+  """Edits the breakpoint condition on the clicked line.
   """
   def run(self):
     breakpoint = self.get_line_breakpoint()
     if not breakpoint:
       return
-    # TODO(benvanik): edit breakpoint condition/ignore count/etc
-    print 'TODO: edit breakpoint'
+    def _on_done(new_value):
+      new_value = new_value.strip()
+      if not len(new_value):
+        new_value = None
+      breakpoint.set_condition(new_value)
+    input_view = self.window.show_input_panel(
+        'New Condition:',
+        breakpoint.condition() or '',
+        _on_done, None, None)
+    input_view.run_command('select_all')
 
   def is_visible(self):
-    if not super(StdiEditBreakpointCommand, self).is_visible():
+    if not super(StdiEditBreakpointConditionCommand, self).is_visible():
+      return False
+    return self.get_line_breakpoint()
+
+  def description(self):
+    breakpoint = self.get_line_breakpoint()
+    if not breakpoint or not breakpoint.condition():
+      return 'Edit Condition...'
+    else:
+      return 'Condition: \'%s\'...' % (breakpoint.condition())
+
+
+class StdiIgnoreBreakpointCommand(_BreakpointContextCommand):
+  """Edits the breakpoint ignore count on the clicked line.
+  """
+  def run(self):
+    breakpoint = self.get_line_breakpoint()
+    if not breakpoint:
+      return
+    def _on_done(new_value):
+      try:
+        new_value = int(new_value)
+      except:
+        return
+      for debugger in plugin().debuggers():
+        debugger.ignore_breakpoint(breakpoint, new_value)
+    input_view = self.window.show_input_panel(
+        'Ignore Hits:',
+        '1',
+        _on_done, None, None)
+    input_view.run_command('select_all')
+
+  def is_visible(self):
+    if not super(StdiIgnoreBreakpointCommand, self).is_visible():
+      return False
+    if not len(plugin().debuggers()):
       return False
     return self.get_line_breakpoint()
 

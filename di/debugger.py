@@ -324,6 +324,21 @@ class Debugger(object):
     print 'DEBUGGER: changed breakpoint'
     self._update_state(response)
 
+  def ignore_breakpoint(self, breakpoint, ignore_count):
+    """Ignores a breakpoint for a number of hits.
+
+    Args:
+      breakpoint: Breakpoint to ignore.
+      ignore_count: Number of hits to ignore.
+    """
+    print 'DEBUGGER: ignore breakpoint'
+    self._breakpoint_queue.append(('ignore', breakpoint, ignore_count))
+    self._pump_breakpoint_queue()
+
+  def _on_ignore_breakpoint(self, response, *args, **kwargs):
+    print 'DEBUGGER: ignored breakpoint'
+    self._update_state(response)
+
   def remove_breakpoint(self, breakpoint):
     """Removes a breakpoint from the debugger.
 
@@ -352,6 +367,9 @@ class Debugger(object):
       if entry[0] == 'change':
         self._protocol.change_breakpoint(protocol_id, breakpoint,
                                          self._on_change_breakpoint)
+      elif entry[0] == 'ignore':
+        self._protocol.ignore_breakpoint(protocol_id, entry[2],
+                                         self._on_ignore_breakpoint)
       elif entry[0] == 'remove':
         self._protocol.remove_breakpoint(protocol_id,
                                          self._on_remove_breakpoint)

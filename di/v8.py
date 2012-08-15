@@ -163,7 +163,6 @@ class V8DebuggerProtocol(DebuggerProtocol):
         'column': target_column,
         'enabled': breakpoint.is_enabled(),
         'condition': breakpoint.condition(),
-        'ignoreCount': breakpoint.ignore_count(),
         }, lambda response: callback(response))
 
   def change_breakpoint(self, protocol_id, breakpoint, callback):
@@ -172,7 +171,13 @@ class V8DebuggerProtocol(DebuggerProtocol):
         'breakpoint': protocol_id,
         'enabled': breakpoint.is_enabled(),
         'condition': breakpoint.condition(),
-        'ignoreCount': breakpoint.ignore_count(),
+        }, lambda response: callback(response))
+
+  def ignore_breakpoint(self, protocol_id, ignore_count, callback):
+    print 'V8: ignore breakpoint p%s' % (protocol_id)
+    self._send_command('changebreakpoint', {
+        'breakpoint': protocol_id,
+        'ignoreCount': ignore_count,
         }, lambda response: callback(response))
 
   def remove_breakpoint(self, protocol_id, callback):

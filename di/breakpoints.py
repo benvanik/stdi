@@ -109,7 +109,6 @@ class BreakpointList(object):
       breakpoint.set_display_name(breakpoint_obj['display_name'])
       breakpoint.set_enabled(breakpoint_obj['is_enabled'])
       breakpoint.set_condition(breakpoint_obj['condition'])
-      breakpoint.set_ignore_count(breakpoint_obj['ignore_count'])
 
   def save(self, path=None):
     """Saves the breakpoint list.
@@ -133,7 +132,6 @@ class BreakpointList(object):
           'display_name': breakpoint.display_name(),
           'is_enabled': breakpoint.is_enabled(),
           'condition': breakpoint.condition(),
-          'ignore_count': breakpoint.ignore_count(),
           }
       if breakpoint.type() == 'location':
         breakpoint_obj['location'] = breakpoint.location()
@@ -286,7 +284,6 @@ class Breakpoint(object):
     self._display_name = None
     self._is_enabled = True
     self._condition = None
-    self._ignore_count = 0
 
   def id(self):
     return self._id
@@ -328,14 +325,5 @@ class Breakpoint(object):
   def set_condition(self, value):
     if self._condition == value:
       return
-    self._condition = condition
-    self._breakpoint_list.invalidate_breakpoint(self)
-
-  def ignore_count(self):
-    return self._ignore_count
-
-  def set_ignore_count(self, value):
-    if self._ignore_count == value:
-      return
-    self._ignore_count = value
+    self._condition = value
     self._breakpoint_list.invalidate_breakpoint(self)
