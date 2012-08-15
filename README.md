@@ -6,6 +6,48 @@ variety of debuggers with rich UI. Included is a debugger for v8.
 
 SUUUUPER experimental! Consider this a proof-of-concept!
 
+## Setup
+
+Clone this repository into your Packages directory.
+To find your Packages path, bring up the console with ``ctrl-` `` and enter:
+
+    print sublime.packages_path()
+
+You'll likely need to restart Sublime Text 2 to get the plugin.
+
+## Usage
+
+The debugger requires some settings to function - namely, what you want to debug.
+I recommend making these settings per-project, however you can make them global
+defaults as well.
+
+From the `Project` menu select `Edit Project`, add or merge the following:
+
+    "settings":
+    {
+        "stdi_provider": "v8://localhost:5898"
+    }
+
+The provider URI is the target of the debugger. In the future I'll make it more
+flexible/add more providers/etc.
+
+When launching your node.js app, add `--debug=5898` to the command line:
+
+    node --debug=5898 my_script.js
+
+Right click in a ST view and select 'Attach Debugger' to start debugging!
+
+More UI/etc is TODO, but for now you can use the Command Palette
+(`ctrl-shift-P`) with the prefix `Debugger:` to access most commands. The
+following keyboard shortcuts are recognized:
+
+* F8: pause/resume target, continue if broken
+* F9: add/remove a breakpoint
+* shift-F9: enable/disable a breakpoint
+* F10: step over next instruction
+* F11: step in to next call
+* shift-F11: step out of current scope
+
 ## Features
 
 ### Breakpoints
@@ -49,35 +91,6 @@ TODO
 
 It'd be cool to plug in other runtimes that have remote debuggers. It's easy to
 add them, so go contribute!
-
-## Usage
-
-The debugger requires some settings to function - namely, what you want to debug.
-I recommend making these settings per-project, however you can make them global
-defaults as well.
-
-From the `Project` menu select `Edit Project`, add or merge the following:
-
-    "settings":
-    {
-        "stdi_provider": "v8://localhost:5898"
-    }
-
-The provider URI is the target of the debugger. In the future I'll make it more
-flexible/add more providers/etc.
-
-When launching your node.js app, add `--debug=5898` to the command line:
-
-    node --debug=5898 my_script.js
-
-Right click in a ST view and select 'Attach Debugger' to start debugging!
-
-## Setup
-
-Clone this repository into your Packages directory.
-To find your Packages path, bring up the console with ``ctrl-` `` and enter:
-
-    print sublime.packages_path()
 
 ## Resources
 
