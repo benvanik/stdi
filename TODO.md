@@ -1,3 +1,28 @@
+Debugging Chrome/Safari
+=======================
+
+* flesh out provider API
+  * chrome: --remote-debugging-port=9222
+  * http://localhost:9222/json
+    * list of pages [{}, {}, ...]
+    [{
+      "devtoolsFrontendUrl": "/devtools/devtools.html?ws=localhost:5899/devtools/page/3_4",
+      "faviconUrl": "http://www.google.com/favicon.ico",
+      "thumbnailUrl": "/thumb/http://www.google.com/",
+      "title": "Google",
+      "url": "http://www.google.com/",
+      "webSocketDebuggerUrl": "ws://localhost:5899/devtools/page/3_4"
+    }, ...]
+* stdi.launch_debugger should query provider
+  * if provider wants show quick panel to pick between instances
+  * launch on chosen instance
+  * v8 provider would always have single instance, no quick panel
+  * remember selection?
+* implement webkit protocol
+  * JSON RPC: http://trac.webkit.org/browser/trunk/Source/WebCore/inspector/Inspector.json
+
+
+
 * adding things to gutter:
   * breakpoints
     XdebugView

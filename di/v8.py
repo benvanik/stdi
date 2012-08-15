@@ -39,8 +39,11 @@ class V8InstanceProvider(InstanceProvider):
         InstanceInfo(self, uri),
         ]
 
-  def get_current_instances(self):
-    return self._instances
+  def is_single_instance(self):
+    return True
+
+  def query_instances(self, callback):
+    sublime.set_timeout(lambda: callback(self._instances), 0)
 
   def attach_debugger(self, instance_info, listener):
     protocol = V8DebuggerProtocol(instance_info.uri())

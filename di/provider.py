@@ -53,8 +53,8 @@ class InstanceInfo(object):
 
 class InstanceProvider(object):
   """An instance info provider.
-  A hosting runtime or system that contains debuggable instances. Providers,
-  once created, should asynchronously update their active instances frequently.
+  A hosting runtime or system that contains debuggable instances. Providers are
+  long-lived and should try to reuse data.
   """
   def __init__(self, uri, *args, **kwargs):
     """Initializes a provider.
@@ -71,18 +71,15 @@ class InstanceProvider(object):
   def display_name(self):
     return self._display_name or self._uri
 
-  def refresh(self):
-    """Forces a refresh of the provider.
-    """
-    pass
+  def is_single_instance(self):
+    return True
 
-  def get_current_instances(self):
-    """Gets a cached list of active instances.
-    This method must not block. It should return the list of instances from the
-    last time the provider was queried.
+  def query_instances(self, callback):
+    """Asynchronously queries active instances.
+    This method must not block.
 
-    Returns:
-      A list of InstanceInfos provided.
+    Args:
+      callback: A callback to receive a list of InstanceInfos.
     """
     raise NotImplementedError()
 

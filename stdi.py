@@ -126,34 +126,73 @@ class DebugPlugin(object):
       self._providers[uri] = provider
     return provider
 
-  def launch_debugger(self, target_window, provider_uri, attach):
+  def launch_debugger(self, target_window, provider_uri, attach, callback=None):
     """Launches a debugger.
 
     Args:
       target_window: Target window.
       provider_uri: Provider URI.
       attach: True to attach to an existing instance.
-
-    Returns:
-      A Debugger, if it could be created and did not already exist.
+      callback: Callback that will receive the Debugger or None if it failed or
+                already existed.
     """
     provider = self._get_provider_for_uri(provider_uri)
+    if not provider:
+      print 'STDI: no provider found for URI %s' % (provider_uri)
+      self.show_status_message('No provider found for URI %s' % (provider_uri))
+      sublime.set_timeout(lambda: callback(None))
+      return
 
     if attach:
       print 'DEBUG: would attach'
     else:
       print 'DEBUG: would launch'
 
-    # TODO(benvanik): async launch/pick instance from quickpanel, etc
-    instance_info = provider.get_current_instances()[0]
+    # Query instances async
+    def _queried_instances(instance_infos):
+      if not len(instance_infos):
+        print 'STDI: no instances found on provider'
+        self.show_status_message('No debuggable instances found!')
+        callback(None)
+      if not provider.is_single_instance():
+        # Need to show a list
+        items = []
+        for instance_info in instance_infos:
+          items.append([
+              instance_info.display_name(),
+              instance_info.uri(),
+              ])
+        def _item_selected(index):
+          if index == -1:
+            callback(None)
+            return
+          instance_info = instance_infos[index]
+          self._attach_to_instance(target_window, instance_info)
+        target_window.show_quick_panel(
+            items, _item_selected, sublime.MONOSPACE_FONT)
+      else:
+        # Pick the only one we have
+        self._attach_to_instance(target_window, instance_infos[0])
+    provider.query_instances(_queried_instances)
+
+  def _attach_to_instance(self, target_window, instance_info):
+    """Attaches to an instance.
+
+    Args:
+      target_window: Target window.
+      instance_info: Instance to attach to.
+    """
+    # Ensure not running
     if instance_info.uri() in self._debuggers:
       return None
 
+    # Create
+    provider = instance_info.provider()
     listener = DebuggerListener(self)
     debugger = instance_info.attach_debugger(listener)
     debugger.set_target_window(target_window)
     self._debuggers[instance_info.uri()] = debugger
-    self._debuggers_by_provider[provider_uri] = debugger
+    self._debuggers_by_provider[provider.uri()] = debugger
     debugger.attach()
 
     self._status_manager.show_message('Attaching debugger...')
@@ -396,20 +435,26 @@ class _WindowCommand(sublime_plugin.WindowCommand):
       return True
     return not not self.get_debugger_provider_uri()
 
-  def launch_debugger(self, attach=False):
+  def launch_debugger(self, attach=False, callback=None):
     """Launches a debugger.
 
     Args:
       attach: Attach to an existing instance.
-
-    Returns:
-      A Debugger, if it could be created and did not already exist.
+      callback: Callback to call with the Debugger or none if it could not be
+                created, already existed, or the action was cancelled.
     """
+    def _dummy(debugger):
+      pass
+    callback = callback or _dummy
     provider_uri = self.get_debugger_provider_uri()
     if not provider_uri:
       print 'STDI: no debug provider configured'
-      return None
-    return plugin().launch_debugger(self.window, provider_uri, attach)
+      plugin().show_status_message('No debug provider configured')
+      sublime.set_timeout(lambda: callback(None), 0)
+      return
+
+    # Launch!
+    plugin().launch_debugger(self.window, provider_uri, attach, callback)
 
   def get_debugger(self):
     """Gets the active debugger for the active window/view.
@@ -446,7 +491,7 @@ class StdiLaunchDebuggerCommand(_WindowCommand):
   """Launches a configured target app and attaches the debugger.
   """
   def run(self):
-    debugger = self.launch_debugger()
+    self.launch_debugger()
 
   def is_enabled(self):
     return not self.get_debugger()
@@ -459,7 +504,7 @@ class StdiAttachDebuggerCommand(_WindowCommand):
   """Attaches to a configured target app if it is already running.
   """
   def run(self):
-    debugger = self.launch_debugger(attach=True)
+    self.launch_debugger(attach=True)
 
   def is_enabled(self):
     return not self.get_debugger()
@@ -610,7 +655,7 @@ class StdiContinueToHereCommand(_ContextCommand):
       print 'continue to here'
     else:
       print 'launch and continue to here'
-      debugger = self.launch_debugger()
+      self.launch_debugger()
       #debugger.continue_to(...)
 
   def is_visible(self):
