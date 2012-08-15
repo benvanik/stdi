@@ -1,0 +1,34 @@
+[
+  {
+    "keys": ["f5"],
+    "command": "stdi_launch_debugger"
+  },
+  {
+    "keys": ["shift+f5"],
+    "command": "stdi_attach_detach_debugger"
+  },
+  {
+    "keys": ["f8"],
+    "command": "stdi_debug_pause"
+  },
+  {
+    "keys": ["f9"],
+    "command": "stdi_add_remove_breakpoint"
+  },
+  {
+    "keys": ["shift+f9"],
+    "command": "stdi_toggle_breakpoint"
+  },
+  {
+    "keys": ["f10"],
+    "command": "stdi_debug_step_over"
+  },
+  {
+    "keys": ["f11"],
+    "command": "stdi_debug_step_in"
+  },
+  {
+    "keys": ["shift+f11"],
+    "command": "stdi_debug_step_out"
+  }
+]

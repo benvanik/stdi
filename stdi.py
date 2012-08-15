@@ -500,36 +500,29 @@ class StdiLaunchDebuggerCommand(_WindowCommand):
     return not self.get_debugger()
 
 
-class StdiAttachDebuggerCommand(_WindowCommand):
-  """Attaches to a configured target app if it is already running.
+class StdiAttachDetachDebuggerCommand(_WindowCommand):
+  """Attaches or detach to a configured target app if it is already running.
   """
   def run(self):
-    self.launch_debugger(attach=True)
+    if not self.get_debugger():
+      self.launch_debugger(attach=True)
+    else:
+      plugin().show_status_message('Detaching debugger...')
+      debugger = self.get_debugger()
+      debugger.detach(terminate=False)
+      plugin().remove_debugger(debugger)
 
-  def is_enabled(self):
-    return not self.get_debugger()
-
-  def is_visible(self):
-    return not self.get_debugger()
+  def description(self):
+    if not self.get_debugger():
+      return 'Attach Debugger'
+    else:
+      return 'Detach Debugger'
 
 
 class _ControlCommand(_WindowCommand):
   """Command that controls debugger flow.
   """
   def is_visible(self):
-    return self.get_debugger()
-
-
-class StdiDetachDebugger(_ControlCommand):
-  """Detach debugger and leave running.
-  """
-  def run(self):
-    plugin().show_status_message('Detaching debugger...')
-    debugger = self.get_debugger()
-    debugger.detach(terminate=False)
-    plugin().remove_debugger(debugger)
-
-  def is_enabled(self):
     return self.get_debugger()
 
 

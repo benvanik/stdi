@@ -5,14 +5,8 @@
     "caption": "Launch Debugger"
   },*/
   {
-    "id": "stdi_attach_debugger",
-    "command": "stdi_attach_debugger",
-    "caption": "Attach Debugger"
-  },
-  {
-    "id": "stdi_detach_debugger",
-    "command": "stdi_detach_debugger",
-    "caption": "Detach Debugger"
+    "id": "stdi_attach_detach_debugger",
+    "command": "stdi_attach_detach_debugger"
   },
   {
     "id": "stdi_stop_debugger",
