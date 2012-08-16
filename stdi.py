@@ -78,6 +78,9 @@ class DebugPlugin(object):
     # Status manager
     self._status_manager = StatusManager(self)
 
+    # Active location, if one is set
+    self._active_location = None
+
     # All source views that exist, by view.id()
     self._source_views = {}
 
@@ -233,6 +236,18 @@ class DebugPlugin(object):
     del self._debuggers_by_provider[provider_uri]
     self._status_manager.update()
 
+  def translate_uri(self, uri):
+    """Translates a URI to a source path.
+
+    Args:
+      uri: URI.
+
+    Returns:
+      A source path that can be used with ST or None if no mapping exists.
+    """
+    # TODO(benvanik): translate uri (source map/etc)
+    return uri
+
   def get_source_view(self, view, create=True):
     """Gets a SourceView for the given ST view.
 
@@ -248,6 +263,17 @@ class DebugPlugin(object):
       source_view = SourceView(self, view)
       self._source_views[view.id()] = source_view
     return source_view
+
+  def source_views_for_uri(self, uri):
+    """Iterates all source views with the given URI.
+
+    Args:
+      uri: URI.
+    """
+    translated_path = self.translate_uri(uri)
+    for source_view in self._source_views.values():
+      if source_view.file_name() == translated_path:
+        yield source_view
 
   def cleanup_source_view(self, view):
     """Removes a SourceView for the given ST view.
@@ -275,8 +301,7 @@ class DebugPlugin(object):
       return
     (uri, line, column) = location
     self._active_location = (uri, line, column)
-    # TODO(benvanik): translate uri (source map/etc)
-    translated_path = uri
+    translated_path = self.translate_uri(uri)
     full_path = '%s:%s:%s' % (translated_path, line + 1, column + 1)
     window = debugger.target_window()
     new_view = window.open_file(full_path, sublime.ENCODED_POSITION |
@@ -299,11 +324,8 @@ class DebugPlugin(object):
     if not self._active_location:
       return
     (uri, line, column) = self._active_location
-    # TODO(benvanik): translate uri (source map/etc)
-    translated_path = uri
-    for source_view in self._source_views.values():
-      if source_view.file_name() == translated_path:
-        source_view.clear_active_location()
+    for source_view in self.source_views_for_uri(uri):
+      source_view.clear_active_location()
     self._active_location = None
 
 
@@ -385,6 +407,7 @@ class SourceView(object):
     self._plugin = plugin
     self._view = view
     self._active_location = None
+    self._breakpoint_regions = {}
 
   def __getattr__(self, name):
     if hasattr(self._view, name):
@@ -397,8 +420,9 @@ class SourceView(object):
   def cleanup(self):
     """Called before the view is disposed to cleanup all changes.
     """
-    # TODO(benvanik): remove everything!
-    pass
+    self.erase_regions('stdi_view_active')
+    for key in self._breakpoint_regions.values():
+      self.erase_regions(key)
 
   def on_load(self):
     """Called once the view has loaded.
@@ -407,6 +431,21 @@ class SourceView(object):
     if self._active_location:
       self.window().focus_view(self._view)
 
+  def location_to_region(self, location):
+    """Converts a location to a region.
+    Assumes the location is in the current view.
+
+    Args:
+      location: (uri, line, column) location.
+
+    Returns:
+      A sublime.Region.
+    """
+    (uri, line, column) = location
+    self._active_location = (uri, line, column)
+    point = self.text_point(line, column)
+    return self.line(point)
+
   def active_location(self):
     return self._active_location
 
@@ -414,28 +453,54 @@ class SourceView(object):
     self.clear_active_location()
     if not location:
       return
-    (uri, line, column) = location
-    self._active_location = (uri, line, column)
-
-    point = self.text_point(line, column)
-    region = self.line(point)
+    region = self.location_to_region(location)
 
     # Pick based on breakpoint/exception/etc
+    # TODO(benvanik): pick icon/style
     scope = 'stdi.gutter.active_line'
-    icon = 'bookmark '
+    icon = 'bookmark'
 
     self.add_regions('stdi_view_active',
                      [region],
                      scope,
                      icon,
                      sublime.DRAW_EMPTY)
-    self.show(point)
+    self.show(region.begin())
 
   def clear_active_location(self):
     if not self._active_location:
       return
     self.erase_regions('stdi_view_active')
     self._active_location = None
+
+  def add_breakpoint(self, breakpoint):
+    location = breakpoint.location()
+    region = self.location_to_region(location)
+
+    # TODO(benvanik): pick icon/style
+    scope = 'stdi.gutter.breakpoint'
+    icon = 'dot'
+
+    key = 'stdi_view_breakpoint_%s' % (breakpoint.id())
+    self.add_regions(key,
+                     [region],
+                     scope,
+                     icon,
+                     sublime.HIDDEN)
+
+    self._breakpoint_regions[breakpoint.id()] = key
+
+  def change_breakpoint(self, breakpoint):
+    # Easy!
+    self.remove_breakpoint(breakpoint)
+    self.add_breakpoint(breakpoint)
+
+  def remove_breakpoint(self, breakpoint):
+    key = self._breakpoint_regions.get(breakpoint.id(), None)
+    if not key:
+      return
+    self.erase_regions(key)
+    del self._breakpoint_regions[breakpoint.id()]
 
 
 class EventListener(sublime_plugin.EventListener):
@@ -479,16 +544,32 @@ class BreakpointListener(di.BreakpointListener):
 
   def on_breakpoint_add(self, breakpoint):
     print 'EVENT: on_breakpoint_add'
+    # Update all views
+    if breakpoint.type() == 'location':
+      location_uri = breakpoint.location()[0]
+      for source_view in plugin().source_views_for_uri(location_uri):
+        source_view.add_breakpoint(breakpoint)
+    # Update all debuggers
     for debugger in plugin().debuggers():
       debugger.add_breakpoint(breakpoint)
 
   def on_breakpoint_change(self, breakpoint):
     print 'EVENT: on_breakpoint_change'
+    if breakpoint.type() == 'location':
+      location_uri = breakpoint.location()[0]
+      for source_view in plugin().source_views_for_uri(location_uri):
+        source_view.change_breakpoint(breakpoint)
+    # Update all debuggers
     for debugger in plugin().debuggers():
       debugger.change_breakpoint(breakpoint)
 
   def on_breakpoint_remove(self, breakpoint):
     print 'EVENT: on_breakpoint_remove'
+    if breakpoint.type() == 'location':
+      location_uri = breakpoint.location()[0]
+      for source_view in plugin().source_views_for_uri(location_uri):
+        source_view.remove_breakpoint(breakpoint)
+    # Update all debuggers
     for debugger in plugin().debuggers():
       debugger.remove_breakpoint(breakpoint)
 
