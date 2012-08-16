@@ -5,6 +5,25 @@ Debugging Chrome/Safari
   * JSON RPC: http://trac.webkit.org/browser/trunk/Source/WebCore/inspector/Inspector.json
   "webSocketDebuggerUrl": "ws://localhost:5899/devtools/page/3_4"
 
+Variable Value Tooltips
+=======================
+
+* when selection enters variable range:
+  * query variable value, if present:
+    * _view_variable_lookup[view.id()] = value/info/etc
+    *
+  * when moving off value, view.run_command('hide_auto_complete')
+    view.run_command('auto_complete', {
+        'disable_auto_insert': True,
+        'api_completions_only': True,
+        'next_completion_if_showing': False,
+        'auto_complete_commit_on_tab': True,
+        })
+* implement EventListener::on_query_completions:
+  * return _view_variable_lookup[view.id()]
+
+
+
 
 
 * adding things to gutter:

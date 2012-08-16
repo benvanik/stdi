@@ -40,6 +40,7 @@ if len(modified_modules):
 #     print index
 
 
+# TODO(benvanik): move to SourceView
 def _get_syntax_name(view):
   """Gets the name of the syntax used in the given view.
 
@@ -51,21 +52,6 @@ def _get_syntax_name(view):
   """
   syntax = view.settings().get('syntax')
   return os.path.splitext(os.path.basename(syntax))[0]
-
-
-def _callback_when_view_loaded(view, callback):
-  """Waits until a view is loaded before calling the given callback.
-  Since views are all loaded asynchronously, all operations on them must wait
-  until they load. This will timeout-spin until the view is loaded.
-
-  Args:
-    view: View.
-    callback: Callback, receives the view as the only parameter.
-  """
-  if not view.is_loading():
-    callback(view)
-  else:
-    sublime.set_timeout(lambda: _callback_when_view_loaded(view, callback), 1)
 
 
 class DebugPlugin(object):
@@ -91,6 +77,15 @@ class DebugPlugin(object):
 
     # Status manager
     self._status_manager = StatusManager(self)
+
+    # All source views that exist, by view.id()
+    self._source_views = {}
+
+    # Scan all open views to build source views
+    # TODO(benvanik): find a way to prevent this
+    for window in sublime.windows():
+      for view in window.views():
+        self.get_source_view(view)
 
   def debuggers(self):
     return self._debuggers.values()
@@ -238,6 +233,79 @@ class DebugPlugin(object):
     del self._debuggers_by_provider[provider_uri]
     self._status_manager.update()
 
+  def get_source_view(self, view, create=True):
+    """Gets a SourceView for the given ST view.
+
+    Args:
+      view: ST view.
+      create: True to create if needed.
+
+    Returns:
+      A SourceView, created on demand if needed.
+    """
+    source_view = self._source_views.get(view.id(), None)
+    if not source_view and create:
+      source_view = SourceView(self, view)
+      self._source_views[view.id()] = source_view
+    return source_view
+
+  def cleanup_source_view(self, view):
+    """Removes a SourceView for the given ST view.
+
+    Args:
+      view: ST view.
+    """
+    source_view = self._source_views.get(view.id(), None)
+    if source_view:
+      source_view.cleanup()
+      del self._source_views[view.id()]
+
+  def active_location(self):
+    return self._active_location
+
+  def set_active_location(self, debugger, location):
+    """Sets the active location, opening views and changing focus.
+
+    Args:
+      debugger: Debugger that is requesting the location change.
+      location: (uri, line, column) location.
+    """
+    if not location:
+      self.clear_active_location()
+      return
+    (uri, line, column) = location
+    self._active_location = (uri, line, column)
+    # TODO(benvanik): translate uri (source map/etc)
+    translated_path = uri
+    full_path = '%s:%s:%s' % (translated_path, line + 1, column + 1)
+    window = debugger.target_window()
+    new_view = window.open_file(full_path, sublime.ENCODED_POSITION |
+                                           0)#sublime.TRANSIENT)
+    new_view = self.get_source_view(new_view)
+    if not new_view.is_loading():
+      window.focus_view(new_view.view())
+
+    # Enumerate all views we know about and update them
+    # TODO(benvanik): faster - lookup by filename
+    for source_view in self._source_views.values():
+      if source_view.file_name() == translated_path:
+        source_view.set_active_location(location)
+      else:
+        source_view.clear_active_location()
+
+  def clear_active_location(self):
+    """Clears the active location.
+    """
+    if not self._active_location:
+      return
+    (uri, line, column) = self._active_location
+    # TODO(benvanik): translate uri (source map/etc)
+    translated_path = uri
+    for source_view in self._source_views.values():
+      if source_view.file_name() == translated_path:
+        source_view.clear_active_location()
+    self._active_location = None
+
 
 class StatusManager(object):
   """Status UI manager.
@@ -299,7 +367,92 @@ class StatusManager(object):
     view.set_status('stdi', message)
 
 
+class SourceView(object):
+  """A ST view wrapper that manages a single views overlays and state.
+  A DebugPlugin will manage these views, creating and deleting them as required,
+  to enable sensible control over the custom regions/etc added to a normal ST
+  view.
+
+  This type uses metaprogramming to make it act like an ST view (mostly).
+  """
+  def __init__(self, plugin, view, *args, **kwargs):
+    """Initializes a source view.
+
+    Args:
+      plugin: Parent plugin.
+      view: ST view.
+    """
+    self._plugin = plugin
+    self._view = view
+    self._active_location = None
+
+  def __getattr__(self, name):
+    if hasattr(self._view, name):
+      return getattr(self._view, name)
+    raise AttributeError('Attribute %s not found' % (name))
+
+  def view(self):
+    return self._view
+
+  def cleanup(self):
+    """Called before the view is disposed to cleanup all changes.
+    """
+    # TODO(benvanik): remove everything!
+    pass
+
+  def on_load(self):
+    """Called once the view has loaded.
+    """
+    self.set_active_location(self._active_location)
+    if self._active_location:
+      self.window().focus_view(self._view)
+
+  def active_location(self):
+    return self._active_location
+
+  def set_active_location(self, location):
+    self.clear_active_location()
+    if not location:
+      return
+    (uri, line, column) = location
+    self._active_location = (uri, line, column)
+
+    point = self.text_point(line, column)
+    region = self.line(point)
+
+    # Pick based on breakpoint/exception/etc
+    scope = 'stdi.gutter.active_line'
+    icon = 'bookmark '
+
+    self.add_regions('stdi_view_active',
+                     [region],
+                     scope,
+                     icon,
+                     sublime.DRAW_EMPTY)
+    self.show(point)
+
+  def clear_active_location(self):
+    if not self._active_location:
+      return
+    self.erase_regions('stdi_view_active')
+    self._active_location = None
+
+
 class EventListener(sublime_plugin.EventListener):
+  def on_new(self, view):
+    plugin().get_source_view(view)
+
+  def on_clone(self, view):
+    plugin().get_source_view(view)
+
+  def on_load(self, view):
+    source_view = plugin().get_source_view(view, create=True)
+    if source_view:
+      source_view.on_load()
+
+  def on_close(self, view):
+    plugin().cleanup_source_view(view)
+
   def on_post_save(self, view):
     # Notify all active debuggers that the given file has changed - they can
     # do what they want with that information
@@ -346,7 +499,6 @@ class DebuggerListener(di.DebuggerListener):
   def __init__(self, plugin, *args, **kwargs):
     super(DebuggerListener, self).__init__(*args, **kwargs)
     self._plugin = plugin
-    self._active_location = None
 
   def on_attach(self, *args, **kwargs):
     print 'EVENT: on_attach'
@@ -359,6 +511,7 @@ class DebuggerListener(di.DebuggerListener):
   def on_detach(self, reason, *args, **kwargs):
     print 'EVENT: on_detach(%s)' % (reason)
     plugin().remove_debugger(self.debugger())
+    plugin().clear_active_location()
 
     status_manager = self._plugin.status_manager()
     detach_message = 'Detached'
@@ -374,41 +527,20 @@ class DebuggerListener(di.DebuggerListener):
 
   def on_resume(self, *args, **kwargs):
     print 'EVENT: on_resume'
+    plugin().clear_active_location()
 
   def on_break(self, location, breakpoints_hit, snapshot, *args, **kwargs):
     print 'EVENT: on_break(%s@%s:%s)' % (location[0],
                                          location[1] + 1, location[2] + 1)
     if len(breakpoints_hit):
       print '  breakpoints hit: %s' % (breakpoints_hit)
-    self.set_active_location(location)
+    plugin().set_active_location(self.debugger(), location)
 
   def on_exception(self, location, is_uncaught, exception, snapshot,
                    *args, **kwargs):
     print 'EVENT: on_exception(%s@%s:%s)' % (location[0],
                                              location[1] + 1, location[2] + 1)
-    self.set_active_location(location)
-
-  def active_location(self):
-    return self._active_location
-
-  def set_active_location(self, location):
-    self.clear_active_location()
-    (uri, line, column) = location
-    self._active_location = (uri, line, column)
-    full_uri = '%s:%s:%s' % (uri, line + 1, column + 1)
-    # TODO(benvanik): translate
-    translated_path = full_uri
-    window = self.debugger().target_window()
-    view = window.open_file(translated_path, sublime.ENCODED_POSITION)
-    _callback_when_view_loaded(view, self._foo)
-  def _foo(self, view):
-    print 'view opened and loaded'
-    view.window().focus_view(view)
-
-  def clear_active_location(self):
-    if self._active_location:
-      pass
-    self._active_location = None
+    plugin().set_active_location(self.debugger(), location)
 
 
 class _WindowCommand(sublime_plugin.WindowCommand):

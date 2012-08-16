@@ -280,7 +280,12 @@ class V8DebuggerProtocol(DebuggerProtocol):
     # if response_command == 'evaluate':
     #   response_type = EvaluateResponse
     #   kwargs = {}
-    if response_command == 'setbreakpoint':
+    if response_command == 'changelive':
+      response_type = ChangeSourceResponse
+      kwargs = {
+          'step_in_required': body.get('stepin_recommended', False)
+          }
+    elif response_command == 'setbreakpoint':
       response_type = AddBreakpointResponse
       # TODO(benvanik): extract 'actual_locations': ['column':, 'line':,]
       kwargs = {

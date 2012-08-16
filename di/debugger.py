@@ -293,6 +293,10 @@ class Debugger(object):
     # TODO(benvanik): breakpoint fixup?
     self._update_state(response)
 
+    # If the VM requested a step-in, step-in
+    if response.step_in_required():
+      self.step_in()
+
   def add_breakpoint(self, breakpoint):
     """Adds a breakpoint to the debugger.
 

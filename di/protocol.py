@@ -175,7 +175,7 @@ class ChangeSourceResponse(ProtocolResponse):
   """A response to change source requests.
   """
   def __init__(self, protocol, is_running, is_success, error_message, body,
-               *args, **kwargs):
+               step_in_required, *args, **kwargs):
     """Initializes a change source response.
 
     Args:
@@ -184,9 +184,11 @@ class ChangeSourceResponse(ProtocolResponse):
       is_success: True if the requests was successful.
       error_message: An error message, if not successful.
       body: Raw body. Implementation-specific.
+      step_in_required: A step-in is required.
     """
     super(ChangeSourceResponse, self).__init__(
         protocol, is_running, is_success, error_message, body, *args, **kwargs)
+    self._step_in_required = step_in_required
     # change_log: [
     #   {
     #     'break_points_update': [] ??
@@ -222,6 +224,9 @@ class ChangeSourceResponse(ProtocolResponse):
     #   },
     #   'stack_update_needs_step_in': bool
     # }
+
+  def step_in_required(self):
+    return self._step_in_required
 
 
 class AddBreakpointResponse(ProtocolResponse):
