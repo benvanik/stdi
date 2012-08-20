@@ -10,34 +10,18 @@ import sublime_plugin
 import di
 
 
+PACKAGE_DIR = os.getcwdu()
+
+
 # DEBUG: before possibly reloading the di module, we need to clean it up
 di.cleanup_module()
 # DEBUG: use reimport to update all modules that have changed - this is needed
 #        because Sublime Text will only reload modules in the plugin root
 from third_party.reimport import reimport, modified
-modified_modules = modified(os.path.relpath('di', os.getcwd()))
+modified_modules = modified(os.path.relpath('di', PACKAGE_DIR))
 if len(modified_modules):
   print 'STDI: modules changed, reloading: %s' % (modified_modules)
   reimport(*modified_modules)
-
-
-# class FooCommand(sublime_plugin.TextCommand):
-#   def run(self, edit):
-#     # self.view.window().show_quick_panel([
-#     #   'a',
-#     #   'b',
-#     #   ],
-#     #   self.callback)
-#     #
-#     #self.view.insert(edit, 0, "Hello, World!")
-#     #
-#     self.view.erase_regions('xx')
-#     self.view.add_regions('xx', [self.view.line(0)], 'stdi.gutter.breakpoint', 'dot', sublime.HIDDEN)#sublime.DRAW_EMPTY_AS_OVERWRITE)#sublime.DRAW_OUTLINED)
-#     self.view.set_status('xx', 'debugging')
-#     pass
-
-#   def callback(self, index):
-#     print index
 
 
 # TODO(benvanik): move to SourceView
@@ -503,6 +487,50 @@ class SourceView(object):
     del self._breakpoint_regions[breakpoint.id()]
 
 
+class CallstackView(object):
+  """A view that models a callstack, displaying and handling frame navigation.
+  """
+  def __init__(self, window, debugger, *args, **kwargs):
+    """Initializes a callstack view.
+
+    Args:
+      window: Target sublime window.
+      debugger: Debugger.
+    """
+    self._window = window
+    self._debugger = debugger
+    self._view = window.new_file()
+    self._view.set_name('Callstack')
+    self._view.set_read_only(True)
+    self._view.set_scratch(True)
+    settings = self._view.settings()
+    settings.set('stdi_callstack', True)
+    settings.set('command_mode', False)
+    settings.set('line_numbers', False)
+    settings.set('caret_style', 'blink')
+    settings.set('auto_complete', False)
+    settings.set('draw_white_space', 'none')
+    settings.set('word_wrap', False)
+    settings.set('gutter', True)
+    settings.set('spell_check', False)
+    settings.set('rulers', [])
+    #settings.set('color_scheme', os.path.join(PACKAGE_DIR, 'STDI.tmTheme'))
+    if window.num_groups() > 1:
+      window.set_view_index(self._view, 1, 0)
+
+  def close(self):
+    active_view = self._window.active_view()
+    self._window.focus_view(self._view)
+    self._window.run_command('close')
+    self._window.focus_view(active_view)
+
+  def focus(self):
+    self._window.focus_view(self._view)
+
+  def update(self):
+    pass
+
+
 class EventListener(sublime_plugin.EventListener):
   def on_new(self, view):
     plugin().get_source_view(view)
@@ -580,11 +608,13 @@ class DebuggerListener(di.DebuggerListener):
   def __init__(self, plugin, *args, **kwargs):
     super(DebuggerListener, self).__init__(*args, **kwargs)
     self._plugin = plugin
+    self._callstack_view = None
 
   def on_attach(self, *args, **kwargs):
     print 'EVENT: on_attach'
     # Add all breakpoints
     debugger = self.debugger()
+
     breakpoint_list = plugin().breakpoint_list()
     for breakpoint in breakpoint_list.breakpoints():
       debugger.add_breakpoint(breakpoint)
@@ -593,6 +623,9 @@ class DebuggerListener(di.DebuggerListener):
     print 'EVENT: on_detach(%s)' % (reason)
     plugin().remove_debugger(self.debugger())
     plugin().clear_active_location()
+
+    if self._callstack_view:
+      self._callstack_view.close()
 
     status_manager = self._plugin.status_manager()
     detach_message = 'Detached'
@@ -610,17 +643,30 @@ class DebuggerListener(di.DebuggerListener):
     print 'EVENT: on_resume'
     plugin().clear_active_location()
 
-  def on_break(self, location, breakpoints_hit, snapshot, *args, **kwargs):
+  def show_callstack(self):
+    debugger = self.debugger()
+    if not self._callstack_view:
+      self._callstack_view = CallstackView(sublime.active_window(), debugger)
+    self._callstack_view.focus()
+
+  def on_snapshot(self, snapshot, *args, **kwargs):
+    print 'EVENT: on_snapshot'
+    for frame in snapshot.frames():
+      print 'frame %s: ' % (frame.ordinal())
+    self.show_callstack()
+
+  def on_break(self, location, breakpoints_hit, *args, **kwargs):
     print 'EVENT: on_break(%s@%s:%s)' % (location[0],
                                          location[1] + 1, location[2] + 1)
     if len(breakpoints_hit):
       print '  breakpoints hit: %s' % (breakpoints_hit)
     plugin().set_active_location(self.debugger(), location)
 
-  def on_exception(self, location, is_uncaught, exception, snapshot,
+  def on_exception(self, location, is_uncaught, exception,
                    *args, **kwargs):
     print 'EVENT: on_exception(%s@%s:%s)' % (location[0],
                                              location[1] + 1, location[2] + 1)
+    self._update_snapshot(snapshot)
     plugin().set_active_location(self.debugger(), location)
 
 

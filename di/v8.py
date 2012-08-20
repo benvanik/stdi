@@ -112,10 +112,20 @@ class V8DebuggerProtocol(DebuggerProtocol):
     if self._detach_callback:
       self._detach_callback(reason)
 
+  def query_state(self, callback):
+    print 'V8: query_state'
+    self._send_command('backtrace', {
+        'fromFrame': 0,
+        'toFrame': 1024,
+        }, lambda response: callback(response))
+
   def suspend(self, callback):
     print 'V8: suspend'
     self._send_command('suspend', {})
-    self._send_command('backtrace', {}, lambda response: callback(response))
+    self._send_command('backtrace', {
+        'fromFrame': 0,
+        'toFrame': 1024,
+        }, lambda response: callback(response))
 
   def resume(self, callback):
     print 'V8: resume'
@@ -126,6 +136,10 @@ class V8DebuggerProtocol(DebuggerProtocol):
     self._send_command('continue', {
         'stepaction': action,
         'stepcount': count,
+        })
+    self._send_command('backtrace', {
+        'fromFrame': 0,
+        'toFrame': 1024,
         }, lambda response: callback(response))
 
   def change_source(self, uri, new_source, callback):
@@ -280,7 +294,17 @@ class V8DebuggerProtocol(DebuggerProtocol):
     # if response_command == 'evaluate':
     #   response_type = EvaluateResponse
     #   kwargs = {}
-    if response_command == 'changelive':
+    if response_command == 'backtrace':
+      response_type = SnapshotResponse
+      ref_objs = body.get('refs', [])
+      # TODO(benvanik): convert ref_objs to a map by handle
+      frames = []
+      for frame_obj in body.get('frames', []):
+        frames.append(self._parse_frame(frame_obj, ref_objs))
+      kwargs = {
+          'frames': frames
+          }
+    elif response_command == 'changelive':
       response_type = ChangeSourceResponse
       kwargs = {
           'step_in_required': body.get('stepin_recommended', False)
@@ -297,6 +321,10 @@ class V8DebuggerProtocol(DebuggerProtocol):
     if callback:
       del self._pending_callbacks[seq_id]
       callback(response)
+
+  def _parse_frame(self, frame_obj, ref_objs):
+    frame = Frame(frame_obj['index'])
+    return frame
 
   def _handle_break_event(self, recv_obj):
     """Handles a break event from the remote debugger.

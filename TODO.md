@@ -22,6 +22,19 @@ Variable Value Tooltips
 * implement EventListener::on_query_completions:
   * return _view_variable_lookup[view.id()]
 
+SourceMaps
+==========
+
+* discover source maps:
+  * line in file: //@ sourceMappingURL=/path/to/file.js.map
+  * HTTP GET url, check header: X-SourceMap: /path/to/file.js.map
+* load source maps:
+  https://github.com/mozilla/source-map
+* SourceMapCache
+  * source_maps {} : uri->SourceMap
+  * get_original_location(location) -> location
+* SourceMap
+  * get_original_location(line, column) -> location
 
 
 

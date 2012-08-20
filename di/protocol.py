@@ -171,6 +171,37 @@ class ProtocolResponse(object):
     return self._body
 
 
+class Frame(object):
+  def __init__(self, ordinal):
+    self._ordinal = ordinal
+
+  def ordinal(self):
+    return self._ordinal
+
+
+class SnapshotResponse(ProtocolResponse):
+  """A response containing callstack information.
+  """
+  def __init__(self, protocol, is_running, is_success, error_message, body,
+               frames, *args, **kwargs):
+    """Initializes a snapshot response.
+
+    Args:
+      protocol: The protocol that this response is from.
+      is_running: True if the VM is running.
+      is_success: True if the requests was successful.
+      error_message: An error message, if not successful.
+      body: Raw body. Implementation-specific.
+      frames: A list of Frames.
+    """
+    super(SnapshotResponse, self).__init__(
+        protocol, is_running, is_success, error_message, body, *args, **kwargs)
+    self._frames = frames
+
+  def frames(self):
+    return self._frames
+
+
 class ChangeSourceResponse(ProtocolResponse):
   """A response to change source requests.
   """

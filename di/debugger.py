@@ -9,6 +9,26 @@ class State:
   DETACHED = 2
 
 
+class Snapshot(object):
+  """Debug state snapshot.
+  """
+  def __init__(self, location, frames, *args, **kwargs):
+    """Initializes a debug snapshot.
+
+    Args:
+      location: (uri, line, column) location.
+      frames: A list of Frames.
+    """
+    self._location = location
+    self._frames = frames
+
+  def location(self):
+    return self._location
+
+  def frames(self):
+    return self._frames
+
+
 class DebuggerListener(object):
   """Debugger event listener.
   Receives debugger event notifications.
@@ -43,17 +63,24 @@ class DebuggerListener(object):
     """
     pass
 
-  def on_break(self, location, breakpoints_hit, snapshot, *args, **kwargs):
+  def on_snapshot(self, snapshot, *args, **kwargs):
+    """Handles snapshot updates.
+
+    Args:
+      snapshot: Current state snapshot.
+    """
+    pass
+
+  def on_break(self, location, breakpoints_hit, *args, **kwargs):
     """Handles break events.
 
     Args:
       location: (uri, line, column) at active execution.
       breakpoints_hit: A list of Breakpoints that were triggered.
-      snapshot: Current state snapshot.
     """
     pass
 
-  def on_exception(self, location, is_uncaught, exception, snapshot,
+  def on_exception(self, location, is_uncaught, exception,
                    *args, **kwargs):
     """Handles exception events.
 
@@ -61,7 +88,6 @@ class DebuggerListener(object):
       location: (uri, line, column) at active execution.
       is_uncaught: True if the exception was uncaught.
       exception: Exception object.
-      snapshot: Current state snapshot.
     """
     pass
 
@@ -176,18 +202,19 @@ class Debugger(object):
       event: BreakEvent from protocol.
     """
     print 'DEBUGGER: break event'
-    snapshot = None
-    self._set_is_running(False)
-    breakpoints = []
-    protocol_ids = event.breakpoint_ids()
-    for protocol_id in protocol_ids:
-      breakpoint = self._protocol_to_breakpoint.get(protocol_id, None)
-      if breakpoint:
-        breakpoints.append(breakpoint)
-    self._listener.on_break(
-        (event.source_url(), event.source_line(), event.source_column()),
-        breakpoints,
-        snapshot)
+    def _on_query_state(response):
+      self._set_is_running(False)
+      location = (event.source_url(), event.source_line(), event.source_column())
+      snapshot = Snapshot(location, response.frames())
+      self._listener.on_snapshot(snapshot)
+      breakpoints = []
+      protocol_ids = event.breakpoint_ids()
+      for protocol_id in protocol_ids:
+        breakpoint = self._protocol_to_breakpoint.get(protocol_id, None)
+        if breakpoint:
+          breakpoints.append(breakpoint)
+      self._listener.on_break(location, breakpoints)
+    self._protocol.query_state(_on_query_state)
 
   def _on_exception(self, event, *args, **kwargs):
     """Handles protocol exception callbacks.
@@ -196,13 +223,12 @@ class Debugger(object):
       event: ExceptionEvent from protocol.
     """
     print 'DEBUGGER: exception event'
-    snapshot = None
     self._set_is_running(False)
-    self._listener.on_exception(
-        (event.source_url(), event.source_line(), event.source_column()),
-        event.is_uncaught(),
-        event.exception(),
-        snapshot)
+    location = (event.source_url(), event.source_line(), event.source_column())
+    snapshot = Snapshot(location)
+    self._listener.on_snapshot(snapshot)
+    self._listener.on_exception(location, event.is_uncaught(),
+                                event.exception())
 
   def suspend(self):
     if not self._is_running:
