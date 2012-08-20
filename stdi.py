@@ -515,7 +515,9 @@ class CallstackView(object):
     settings.set('spell_check', False)
     settings.set('rulers', [])
     #settings.set('color_scheme', os.path.join(PACKAGE_DIR, 'STDI.tmTheme'))
-    if window.num_groups() > 1:
+    if window.num_groups() == 4:
+      window.set_view_index(self._view, 2, 0)
+    elif window.num_groups() > 1:
       window.set_view_index(self._view, 1, 0)
 
   def close(self):
@@ -527,8 +529,30 @@ class CallstackView(object):
   def focus(self):
     self._window.focus_view(self._view)
 
-  def update(self):
-    pass
+  def update(self, snapshot):
+    s = ''
+
+    handle_set = snapshot.handle_set()
+    for frame in snapshot.frames():
+      location = frame.location()
+      s += 'frame %s: %s@%s:%s\n' % (frame.ordinal(), location[0],
+                                                      location[1],
+                                                      location[2])
+      # print '  is_constructor: %s' % (frame.is_constructor())
+      # print '  is_at_return: %s' % (frame.is_at_return())
+      # print '  function: %s' % (handle_set.get_value(frame.function_ref()))
+      # print '  this: %s' % (handle_set.get_value(frame.this_ref()))
+      # print '  arguments:'
+      # for var in frame.argument_refs():
+      #   print '    %s = %s' % (var[0], handle_set.get_value(var[1]))
+
+    view = self._view
+    view.set_read_only(False)
+    edit = view.begin_edit()
+    view.erase(edit, sublime.Region(0, view.size()))
+    view.insert(edit, view.size(), s)
+    view.end_edit(edit)
+    view.set_read_only(True)
 
 
 class EventListener(sublime_plugin.EventListener):
@@ -651,7 +675,7 @@ class DebuggerListener(di.DebuggerListener):
 
   def on_snapshot(self, snapshot, *args, **kwargs):
     print 'EVENT: on_snapshot'
-    handle_manager = snapshot.handle_manager()
+    handle_set = snapshot.handle_set()
     for frame in snapshot.frames():
       location = frame.location()
       print 'frame %s: %s@%s:%s' % (frame.ordinal(), location[0],
@@ -659,22 +683,23 @@ class DebuggerListener(di.DebuggerListener):
                                                      location[2])
       print '  is_constructor: %s' % (frame.is_constructor())
       print '  is_at_return: %s' % (frame.is_at_return())
-      print '  function: %s' % (handle_manager.get_value(frame.function_ref()))
-      print '  this: %s' % (handle_manager.get_value(frame.this_ref()))
+      print '  function: %s' % (handle_set.get_value(frame.function_ref()))
+      print '  this: %s' % (handle_set.get_value(frame.this_ref()))
       print '  arguments:'
       for var in frame.argument_refs():
-        print '    %s = %s' % (var[0], handle_manager.get_value(var[1]))
+        print '    %s = %s' % (var[0], handle_set.get_value(var[1]))
       print '  locals:'
       for var in frame.local_refs():
-        print '    %s = %s' % (var[0], handle_manager.get_value(var[1]))
-      print '  scopes:'
-      for scope in frame.scope_chain():
-        print '    %s : %s' % (scope.ordinal(), scope.scope_type())
+        print '    %s = %s' % (var[0], handle_set.get_value(var[1]))
       def _on_query(response):
-        print 'response to frame'
-        pass
+        print '  scopes:'
+        scope_handle_set = response.handle_set()
+        for scope in response.scopes():
+          print '    %s : %s' % (scope.ordinal(), scope.scope_type())
+          scope_handle_set.print_value('scope', scope.object_ref())
       self.debugger()._protocol.query_frame_scopes(frame, _on_query)
     self.show_callstack()
+    self._callstack_view.update(snapshot)
 
   def on_break(self, location, breakpoints_hit, *args, **kwargs):
     print 'EVENT: on_break(%s@%s:%s)' % (location[0], location[1], location[2])

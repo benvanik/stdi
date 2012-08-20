@@ -303,6 +303,7 @@ class V8DebuggerProtocol(DebuggerProtocol):
     args = [self, running, success, message, body]
 
     # TODO(benvanik): a cleaner way of adding properties/etc
+    # print json.dumps(recv_obj, indent=2)
     response_type = ProtocolResponse
     kwargs = {}
     response_command = recv_obj.get('command', '')
@@ -316,16 +317,29 @@ class V8DebuggerProtocol(DebuggerProtocol):
       kwargs = {
           'values': values,
           }
+    elif response_command == 'scopes':
+      response_type = QueryFrameScopesResponse
+      handle_set = HandleSet()
+      ref_objs = recv_obj.get('refs', [])
+      self._populate_handle_set(handle_set, ref_objs)
+      scopes = []
+      for scope_info in body['scopes']:
+        scopes.append(Scope(scope_info['index'], scope_info['type'],
+                            scope_info['object']['ref']))
+      kwargs = {
+          'handle_set': handle_set,
+          'scopes': scopes,
+          }
     elif response_command == 'backtrace':
       response_type = SnapshotResponse
-      handle_manager = HandleManager()
+      handle_set = HandleSet()
       ref_objs = recv_obj.get('refs', [])
-      self._populate_handle_manager(handle_manager, ref_objs)
+      self._populate_handle_set(handle_set, ref_objs)
       frames = []
       for frame_obj in body.get('frames', []):
-        frames.append(self._parse_frame(frame_obj, handle_manager))
+        frames.append(self._parse_frame(frame_obj, handle_set))
       kwargs = {
-          'handle_manager': handle_manager,
+          'handle_set': handle_set,
           'frames': frames,
           }
     elif response_command == 'changelive':
@@ -346,8 +360,7 @@ class V8DebuggerProtocol(DebuggerProtocol):
       del self._pending_callbacks[seq_id]
       callback(response)
 
-  #print json.dumps(recv_obj, indent=2)
-  def _populate_handle_manager(self, handle_manager, ref_objs):
+  def _populate_handle_set(self, handle_set, ref_objs):
     # Pre-pass to find all scripts by ID
     script_uris = {}
     for ref_obj in ref_objs:
@@ -398,10 +411,10 @@ class V8DebuggerProtocol(DebuggerProtocol):
             ref_obj['name'],
             ref_obj['inferredName'],
             (uri, ref_obj['line'] + 1, ref_obj['column'] + 1))
-      handle_manager.add_value(handle)
+      handle_set.add_value(handle)
 
-  def _parse_frame(self, frame_obj, handle_manager):
-    script = handle_manager.get_value(frame_obj['script']['ref'])
+  def _parse_frame(self, frame_obj, handle_set):
+    script = handle_set.get_value(frame_obj['script']['ref'])
     uri = script.uri()
     location = (uri, frame_obj['line'] + 1, frame_obj['column'] + 1)
     argument_vars = []
@@ -410,9 +423,6 @@ class V8DebuggerProtocol(DebuggerProtocol):
     local_vars = []
     for var in frame_obj['locals']:
       local_vars.append((var['name'], var['value']['ref']))
-    scopes = []
-    for scope_info in frame_obj['scopes']:
-      scopes.append(Scope(self, scope_info['index'], scope_info['type']))
     frame = Frame(
         frame_obj['index'],
         location,
@@ -421,8 +431,7 @@ class V8DebuggerProtocol(DebuggerProtocol):
         frame_obj['func']['ref'],
         frame_obj['receiver']['ref'],
         argument_vars,
-        local_vars,
-        scopes)
+        local_vars)
     return frame
 
   # def __init__(self, ordinal, location, is_constructor, is_at_return,

@@ -197,7 +197,7 @@ class SnapshotResponse(ProtocolResponse):
   """A response containing callstack information.
   """
   def __init__(self, protocol, is_running, is_success, error_message, body,
-               handle_manager, frames, *args, **kwargs):
+               handle_set, frames, *args, **kwargs):
     """Initializes a snapshot response.
 
     Args:
@@ -206,16 +206,16 @@ class SnapshotResponse(ProtocolResponse):
       is_success: True if the requests was successful.
       error_message: An error message, if not successful.
       body: Raw body. Implementation-specific.
-      handle_manager: Handle manager.
+      handle_set: Handle value set.
       frames: A list of Frames.
     """
     super(SnapshotResponse, self).__init__(
         protocol, is_running, is_success, error_message, body, *args, **kwargs)
-    self._handle_manager = handle_manager
+    self._handle_set = handle_set
     self._frames = frames
 
-  def handle_manager(self):
-    return self._handle_manager
+  def handle_set(self):
+    return self._handle_set
 
   def frames(self):
     return self._frames
@@ -225,7 +225,7 @@ class QueryValuesResponse(ProtocolResponse):
   """A response to value requests.
   """
   def __init__(self, protocol, is_running, is_success, error_message, body,
-               values, *args, **kwargs):
+               handle_set, *args, **kwargs):
     """Initializes a value query response.
 
     Args:
@@ -234,14 +234,42 @@ class QueryValuesResponse(ProtocolResponse):
       is_success: True if the requests was successful.
       error_message: An error message, if not successful.
       body: Raw body. Implementation-specific.
-      values: JSHandle values.
+      handle_set: Handle value set.
     """
     super(QueryValuesResponse, self).__init__(
         protocol, is_running, is_success, error_message, body, *args, **kwargs)
-    self._values = values
+    self._handle_set = handle_set
 
-  def values(self):
-    return self._values
+  def handle_set(self):
+    return self._handle_set
+
+
+class QueryFrameScopesResponse(ProtocolResponse):
+  """A response to frame scope value requests.
+  """
+  def __init__(self, protocol, is_running, is_success, error_message, body,
+               handle_set, scopes, *args, **kwargs):
+    """Initializes a frame scope query response.
+
+    Args:
+      protocol: The protocol that this response is from.
+      is_running: True if the VM is running.
+      is_success: True if the requests was successful.
+      error_message: An error message, if not successful.
+      body: Raw body. Implementation-specific.
+      handle_set: Handle value set.
+      scopes: A list of Scopes.
+    """
+    super(QueryFrameScopesResponse, self).__init__(
+        protocol, is_running, is_success, error_message, body, *args, **kwargs)
+    self._handle_set = handle_set
+    self._scopes = scopes
+
+  def handle_set(self):
+    return self._handle_set
+
+  def scopes(self):
+    return self._scopes
 
 
 class ChangeSourceResponse(ProtocolResponse):
@@ -392,7 +420,7 @@ class ExceptionEvent(ProtocolEvent):
 
 class Frame(object):
   def __init__(self, ordinal, location, is_constructor, is_at_return,
-               function_ref, this_ref, argument_vars, local_vars, scopes):
+               function_ref, this_ref, argument_vars, local_vars):
     self._ordinal = ordinal
     self._location = location
     self._is_constructor = is_constructor
@@ -401,7 +429,6 @@ class Frame(object):
     self._this_ref = this_ref
     self._arguments = argument_vars
     self._locals = local_vars
-    self._scope_chain = scopes
 
   def ordinal(self):
     return self._ordinal
@@ -427,9 +454,6 @@ class Frame(object):
   def local_refs(self):
     return self._locals
 
-  def scope_chain(self):
-    return self._scope_chain
-
 
 class ScopeType:
   GLOBAL = 0
@@ -440,10 +464,10 @@ class ScopeType:
 
 
 class Scope(object):
-  def __init__(self, protocol, ordinal, scope_type, *args, **kwargs):
-    self._protocol = protocol
+  def __init__(self, ordinal, scope_type, object_ref, *args, **kwargs):
     self._ordinal = ordinal
     self._scope_type = scope_type
+    self._object_ref = object_ref
 
   def ordinal(self):
     return self._ordinal
@@ -451,10 +475,17 @@ class Scope(object):
   def scope_type(self):
     return self._scope_type
 
+  def object_ref(self):
+    return self._object_ref
 
-class HandleManager(object):
+
+class HandleSet(object):
   def __init__(self, *args, **kwargs):
     self._values = {}
+
+  def merge(self, other):
+    for value in other._values:
+      self.add_value(value)
 
   def add_value(self, value):
     self._values[value.handle_id()] = value
@@ -464,6 +495,42 @@ class HandleManager(object):
 
   def get_value(self, handle_id):
     return self._values.get(handle_id, None)
+
+  def dump(self):
+    print 'handle set contains %s values:' % (len(self._values.keys()))
+    for (key, value) in self._values.items():
+      print '  %s: %s' % (key, value)
+
+  def print_value(self, key, handle_id):
+    dumper = _RecursiveDumper(self)
+    dumper.dump(key, self.get_value(handle_id))
+
+
+class _RecursiveDumper(object):
+  def __init__(self, handle_set):
+    self._handle_set = handle_set
+    self._stack = []
+
+  def dump(self, key, value):
+    indent = ''.join(['  ' for n in range(len(self._stack))])
+    print '%s%s: %s' % (indent, key, value)
+    if value in self._stack:
+      return
+    if isinstance(value, JSObject):
+      self._stack.append(value)
+      if isinstance(value, JSFunction):
+        self._dump_function(value)
+      else:
+        self._dump_object(value)
+      self._stack.pop()
+
+  def _dump_function(self, value):
+    pass
+
+  def _dump_object(self, value):
+    for p in value.properties():
+      self.dump(p.name(), self._handle_set.get_value(p.ref()))
+    pass
 
 
 class JSHandle(object):

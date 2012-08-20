@@ -12,23 +12,23 @@ class State:
 class Snapshot(object):
   """Debug state snapshot.
   """
-  def __init__(self, location, handle_manager, frames, *args, **kwargs):
+  def __init__(self, location, handle_set, frames, *args, **kwargs):
     """Initializes a debug snapshot.
 
     Args:
       location: (uri, line, column) location.
-      handle_manager: HandleManager, holding all handles.
+      handle_set: Handle value set, holding all handles.
       frames: A list of Frames.
     """
     self._location = location
-    self._handle_manager = handle_manager
+    self._handle_set = handle_set
     self._frames = frames
 
   def location(self):
     return self._location
 
-  def handle_manager(self):
-    return self._handle_manager
+  def handle_set(self):
+    return self._handle_set
 
   def frames(self):
     return self._frames
@@ -206,7 +206,7 @@ class Debugger(object):
       location = (event.source_url(), event.source_line(),
                   event.source_column())
       snapshot = Snapshot(location,
-                          response.handle_manager(),
+                          response.handle_set(),
                           response.frames())
       self._listener.on_snapshot(snapshot)
       callback(location)
