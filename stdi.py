@@ -286,7 +286,7 @@ class DebugPlugin(object):
     (uri, line, column) = location
     self._active_location = (uri, line, column)
     translated_path = self.translate_uri(uri)
-    full_path = '%s:%s:%s' % (translated_path, line + 1, column + 1)
+    full_path = '%s:%s:%s' % (translated_path, line, column)
     window = debugger.target_window()
     new_view = window.open_file(full_path, sublime.ENCODED_POSITION |
                                            0)#sublime.TRANSIENT)
@@ -427,7 +427,7 @@ class SourceView(object):
     """
     (uri, line, column) = location
     self._active_location = (uri, line, column)
-    point = self.text_point(line, column)
+    point = self.text_point(line - 1, column - 1)
     return self.line(point)
 
   def active_location(self):
@@ -651,21 +651,41 @@ class DebuggerListener(di.DebuggerListener):
 
   def on_snapshot(self, snapshot, *args, **kwargs):
     print 'EVENT: on_snapshot'
+    handle_manager = snapshot.handle_manager()
     for frame in snapshot.frames():
-      print 'frame %s: ' % (frame.ordinal())
+      location = frame.location()
+      print 'frame %s: %s@%s:%s' % (frame.ordinal(), location[0],
+                                                     location[1],
+                                                     location[2])
+      print '  is_constructor: %s' % (frame.is_constructor())
+      print '  is_at_return: %s' % (frame.is_at_return())
+      print '  function: %s' % (handle_manager.get_value(frame.function_ref()))
+      print '  this: %s' % (handle_manager.get_value(frame.this_ref()))
+      print '  arguments:'
+      for var in frame.argument_refs():
+        print '    %s = %s' % (var[0], handle_manager.get_value(var[1]))
+      print '  locals:'
+      for var in frame.local_refs():
+        print '    %s = %s' % (var[0], handle_manager.get_value(var[1]))
+      print '  scopes:'
+      for scope in frame.scope_chain():
+        print '    %s : %s' % (scope.ordinal(), scope.scope_type())
+      def _on_query(response):
+        print 'response to frame'
+        pass
+      self.debugger()._protocol.query_frame_scopes(frame, _on_query)
     self.show_callstack()
 
   def on_break(self, location, breakpoints_hit, *args, **kwargs):
-    print 'EVENT: on_break(%s@%s:%s)' % (location[0],
-                                         location[1] + 1, location[2] + 1)
+    print 'EVENT: on_break(%s@%s:%s)' % (location[0], location[1], location[2])
     if len(breakpoints_hit):
       print '  breakpoints hit: %s' % (breakpoints_hit)
     plugin().set_active_location(self.debugger(), location)
 
   def on_exception(self, location, is_uncaught, exception,
                    *args, **kwargs):
-    print 'EVENT: on_exception(%s@%s:%s)' % (location[0],
-                                             location[1] + 1, location[2] + 1)
+    print 'EVENT: on_exception(%s@%s:%s)' % (location[0], location[1],
+                                             location[2])
     self._update_snapshot(snapshot)
     plugin().set_active_location(self.debugger(), location)
 
@@ -894,7 +914,7 @@ class _ContextCommand(_WindowCommand):
     (line, column) = view.rowcol(sel.a)
     if not include_column:
       column = 0
-    return (self.get_view_uri(), line, column)
+    return (self.get_view_uri(), line + 1, column + 1)
 
 
 class StdiContinueToHereCommand(_ContextCommand):
@@ -950,11 +970,11 @@ class StdiAddRemoveBreakpointCommand(_BreakpointContextCommand):
     if not breakpoint:
       breakpoint_list.create_breakpoint_at_location(location)
       plugin().show_status_message(
-          'Added breakpoint at line %s' % (location[1] + 1))
+          'Added breakpoint at line %s' % (location[1]))
     else:
       breakpoint_list.remove_breakpoint(breakpoint)
       plugin().show_status_message(
-          'Removed breakpoint at line %s' % (location[1] + 1))
+          'Removed breakpoint at line %s' % (location[1]))
 
   def description(self):
     breakpoint = self.get_line_breakpoint()
@@ -1057,7 +1077,7 @@ class StdiPositionedContextMenuCommand(sublime_plugin.TextCommand):
     # new_sel = self.view.sel()
     # click_point = new_sel[0].a
     # (line, column) = self.view.rowcol(click_point)
-    # print '%s:%s (%s)' % (line + 1, column + 1, click_point)
+    # print '%s:%s (%s)' % (line, column, click_point)
     self.view.run_command('context_menu', args)
 
 

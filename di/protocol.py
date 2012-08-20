@@ -137,6 +137,28 @@ class DebuggerProtocol(object):
     """
     raise NotImplementedError()
 
+  def query_values(self, handle_ids, callback):
+    """Queries the values of a list of handles.
+    This is only valid while the remote debugger is paused after an event,
+    such as a break or exception.
+
+    Args:
+      handle_ids: A list of handle IDs.
+      callback: A function to call when the query completes.
+    """
+    raise NotImplementedError()
+
+  def query_frame_scopes(self, frame, callback):
+    """Queries the scopes for the given frame.
+    This is only valid while the remote debugger is paused after an event,
+    such as a break or exception.
+
+    Args:
+      frame: Frame to query.
+      callback: A function to call when the query completes.
+    """
+    raise NotImplementedError()
+
 
 class ProtocolResponse(object):
   """A response to a request made to a protocol.
@@ -171,19 +193,11 @@ class ProtocolResponse(object):
     return self._body
 
 
-class Frame(object):
-  def __init__(self, ordinal):
-    self._ordinal = ordinal
-
-  def ordinal(self):
-    return self._ordinal
-
-
 class SnapshotResponse(ProtocolResponse):
   """A response containing callstack information.
   """
   def __init__(self, protocol, is_running, is_success, error_message, body,
-               frames, *args, **kwargs):
+               handle_manager, frames, *args, **kwargs):
     """Initializes a snapshot response.
 
     Args:
@@ -192,14 +206,42 @@ class SnapshotResponse(ProtocolResponse):
       is_success: True if the requests was successful.
       error_message: An error message, if not successful.
       body: Raw body. Implementation-specific.
+      handle_manager: Handle manager.
       frames: A list of Frames.
     """
     super(SnapshotResponse, self).__init__(
         protocol, is_running, is_success, error_message, body, *args, **kwargs)
+    self._handle_manager = handle_manager
     self._frames = frames
+
+  def handle_manager(self):
+    return self._handle_manager
 
   def frames(self):
     return self._frames
+
+
+class QueryValuesResponse(ProtocolResponse):
+  """A response to value requests.
+  """
+  def __init__(self, protocol, is_running, is_success, error_message, body,
+               values, *args, **kwargs):
+    """Initializes a value query response.
+
+    Args:
+      protocol: The protocol that this response is from.
+      is_running: True if the VM is running.
+      is_success: True if the requests was successful.
+      error_message: An error message, if not successful.
+      body: Raw body. Implementation-specific.
+      values: JSHandle values.
+    """
+    super(QueryValuesResponse, self).__init__(
+        protocol, is_running, is_success, error_message, body, *args, **kwargs)
+    self._values = values
+
+  def values(self):
+    return self._values
 
 
 class ChangeSourceResponse(ProtocolResponse):
@@ -346,3 +388,227 @@ class ExceptionEvent(ProtocolEvent):
 
   def exception(self):
     return self._exception
+
+
+class Frame(object):
+  def __init__(self, ordinal, location, is_constructor, is_at_return,
+               function_ref, this_ref, argument_vars, local_vars, scopes):
+    self._ordinal = ordinal
+    self._location = location
+    self._is_constructor = is_constructor
+    self._is_at_return = is_at_return
+    self._function_ref = function_ref
+    self._this_ref = this_ref
+    self._arguments = argument_vars
+    self._locals = local_vars
+    self._scope_chain = scopes
+
+  def ordinal(self):
+    return self._ordinal
+
+  def location(self):
+    return self._location
+
+  def is_constructor(self):
+    return self._is_constructor
+
+  def is_at_return(self):
+    return self._is_at_return
+
+  def function_ref(self):
+    return self._function_ref
+
+  def this_ref(self):
+    return self._this_ref
+
+  def argument_refs(self):
+    return self._arguments
+
+  def local_refs(self):
+    return self._locals
+
+  def scope_chain(self):
+    return self._scope_chain
+
+
+class ScopeType:
+  GLOBAL = 0
+  LOCAL = 1
+  WITH = 2
+  CLOSURE = 3
+  CATCH = 4
+
+
+class Scope(object):
+  def __init__(self, protocol, ordinal, scope_type, *args, **kwargs):
+    self._protocol = protocol
+    self._ordinal = ordinal
+    self._scope_type = scope_type
+
+  def ordinal(self):
+    return self._ordinal
+
+  def scope_type(self):
+    return self._scope_type
+
+
+class HandleManager(object):
+  def __init__(self, *args, **kwargs):
+    self._values = {}
+
+  def add_value(self, value):
+    self._values[value.handle_id()] = value
+
+  def has_value(self, handle_id):
+    return self._values.get(handle_id, None) != None
+
+  def get_value(self, handle_id):
+    return self._values.get(handle_id, None)
+
+
+class JSHandle(object):
+  def __init__(self, handle_id, handle_type, *args, **kwargs):
+    self._handle_id = handle_id
+    self._handle_type = handle_type
+
+  def handle_id(self):
+    return self._handle_id
+
+  def handle_type(self):
+    return self._handle_type
+
+
+class JSUndefined(JSHandle):
+  def __init__(self, handle_id, *args, **kwargs):
+    super(JSUndefined, self).__init__(handle_id, 'undefined', *args, **kwargs)
+
+  def __repr__(self):
+    return 'undefined'
+
+
+class JSNull(JSHandle):
+  def __init__(self, handle_id, *args, **kwargs):
+    super(JSNull, self).__init__(handle_id, 'null', *args, **kwargs)
+
+  def __repr__(self):
+    return 'null'
+
+
+class JSBoolean(JSHandle):
+  def __init__(self, handle_id, value, *args, **kwargs):
+    super(JSBoolean, self).__init__(handle_id, 'boolean', *args, **kwargs)
+    self._value = value
+
+  def value(self):
+    return self._value
+
+  def __repr__(self):
+    return 'true' if self._value else 'false'
+
+
+class JSNumber(JSHandle):
+  def __init__(self, handle_id, value, *args, **kwargs):
+    super(JSNumber, self).__init__(handle_id, 'number', *args, **kwargs)
+    self._value = value
+
+  def value(self):
+    return self._value
+
+  def __repr__(self):
+    return str(self._value)
+
+
+class JSString(JSHandle):
+  def __init__(self, handle_id, value, *args, **kwargs):
+    super(JSString, self).__init__(handle_id, 'string', *args, **kwargs)
+    self._value = value
+
+  def value(self):
+    return self._value
+
+  def __repr__(self):
+    return '"%s"' % (self._value)
+
+
+class JSScript(JSHandle):
+  def __init__(self, handle_id, uri, *args, **kwargs):
+    super(JSScript, self).__init__(handle_id, 'script', *args, **kwargs)
+    self._uri = uri
+
+  def uri(self):
+    return self._uri
+
+  def __repr__(self):
+    return self._uri
+
+
+class JSObject(JSHandle):
+  def __init__(self, handle_id, class_name, constructor_ref, prototype_ref,
+               properties, *args, **kwargs):
+    super(JSObject, self).__init__(handle_id, 'object', *args, **kwargs)
+    self._class_name = class_name
+    self._constructor_ref = constructor_ref
+    self._prototype_ref = prototype_ref
+    self._properties = properties
+
+  def class_name(self):
+    return self._class_name
+
+  def constructor_ref(self):
+    return self._constructor_ref
+
+  def prototype_ref(self):
+    return self._prototype_ref
+
+  def properties(self):
+    return self._properties
+
+  def __repr__(self):
+    return '<object %s>' % (self.handle_id())
+
+
+class JSProperty(object):
+  def __init__(self, name, ref, property_type, attributes, *args, **kwargs):
+    self._name = name
+    self._ref = ref
+    self._property_type = property_type
+    self._attributes = attributes
+
+  def name(self):
+    return self._name
+
+  def ref(self):
+    return self._ref
+
+  def property_type(self):
+    return self._property_type
+
+  def attributes(self):
+    return self._attributes
+
+  def __repr__(self):
+    return '%s = <%s>' % (self._name, self._ref)
+
+
+class JSFunction(JSObject):
+  def __init__(self, handle_id, class_name, constructor_ref, prototype_ref,
+               properties, name, inferred_name, location, *args, **kwargs):
+    super(JSFunction, self).__init__(handle_id, class_name, constructor_ref,
+                                     prototype_ref, properties, *args, **kwargs)
+    self._name = name
+    self._inferred_name = inferred_name
+    self._location = location
+
+  def name(self):
+    return self._name
+
+  def inferred_name(self):
+    return self._inferred_name
+
+  def location(self):
+    return self._location
+
+  def __repr__(self):
+    name = self._inferred_name or self._name
+    return '%s (%s@%s:%s)' % (name, self._location[0], self._location[1],
+                              self._location[2])

@@ -183,8 +183,8 @@ class V8DebuggerProtocol(DebuggerProtocol):
     self._send_command('setbreakpoint', {
         'type': breakpoint_type,
         'target': target,
-        'line': target_line,
-        'column': target_column,
+        'line': target_line - 1,
+        'column': target_column - 1,
         'enabled': breakpoint.is_enabled(),
         'condition': breakpoint.condition(),
         }, lambda response: callback(response))
@@ -209,6 +209,21 @@ class V8DebuggerProtocol(DebuggerProtocol):
     self._send_command('clearbreakpoint', {
         'breakpoint': protocol_id,
         }, lambda response: callback(response))
+
+  def query_values(self, handle_ids, callback):
+    print 'V8: query values %s' % (handle_ids)
+    self._send_command('lookup', {
+        'handles': handle_ids,
+        }, lambda response: callback(response))
+
+  def query_frame_scopes(self, frame, callback):
+    print 'V8: query frame %s scopes' % (frame.ordinal())
+    def _on_scopes(response):
+      print 'V8: scopes result'
+      callback(response)
+    self._send_command('scopes', {
+        'frameNumber': frame.ordinal(),
+        }, _on_scopes)
 
   def _send_command(self, command, arguments=None, callback=None):
     """Sends a command to the debugger.
@@ -294,20 +309,29 @@ class V8DebuggerProtocol(DebuggerProtocol):
     # if response_command == 'evaluate':
     #   response_type = EvaluateResponse
     #   kwargs = {}
-    if response_command == 'backtrace':
+    if response_command == 'lookup':
+      response_type = QueryValuesResponse
+      values = []
+      # TODO(benvanik): read values
+      kwargs = {
+          'values': values,
+          }
+    elif response_command == 'backtrace':
       response_type = SnapshotResponse
-      ref_objs = body.get('refs', [])
-      # TODO(benvanik): convert ref_objs to a map by handle
+      handle_manager = HandleManager()
+      ref_objs = recv_obj.get('refs', [])
+      self._populate_handle_manager(handle_manager, ref_objs)
       frames = []
       for frame_obj in body.get('frames', []):
-        frames.append(self._parse_frame(frame_obj, ref_objs))
+        frames.append(self._parse_frame(frame_obj, handle_manager))
       kwargs = {
-          'frames': frames
+          'handle_manager': handle_manager,
+          'frames': frames,
           }
     elif response_command == 'changelive':
       response_type = ChangeSourceResponse
       kwargs = {
-          'step_in_required': body.get('stepin_recommended', False)
+          'step_in_required': body.get('stepin_recommended', False),
           }
     elif response_command == 'setbreakpoint':
       response_type = AddBreakpointResponse
@@ -322,9 +346,95 @@ class V8DebuggerProtocol(DebuggerProtocol):
       del self._pending_callbacks[seq_id]
       callback(response)
 
-  def _parse_frame(self, frame_obj, ref_objs):
-    frame = Frame(frame_obj['index'])
+  #print json.dumps(recv_obj, indent=2)
+  def _populate_handle_manager(self, handle_manager, ref_objs):
+    # Pre-pass to find all scripts by ID
+    script_uris = {}
+    for ref_obj in ref_objs:
+      if ref_obj['type'] == 'script':
+        script_uris[ref_obj['id']] = ref_obj['name']
+
+    def _parse_properties(properties_obj):
+      properties = []
+      for property_obj in properties_obj:
+        properties.append(JSProperty(
+            property_obj['name'],
+            property_obj['ref'],
+            property_obj.get('propertyType', 0),
+            property_obj.get('attributes', 0)))
+      return properties
+
+    for ref_obj in ref_objs:
+      print ref_obj
+      handle_id = ref_obj['handle']
+      handle_type = ref_obj['type']
+      if handle_type == 'undefined':
+        handle = JSUndefined(handle_id)
+      elif handle_type == 'null':
+        handle = JSNull(handle_id)
+      elif handle_type == 'boolean':
+        handle = JSBoolean(handle_id, ref_obj['value'])
+      elif handle_type == 'number':
+        handle = JSNumber(handle_id, ref_obj['value'])
+      elif handle_type == 'string':
+        handle = JSString(handle_id, ref_obj['value'])
+      elif handle_type == 'script':
+        handle = JSScript(handle_id, ref_obj['name'])
+      elif handle_type == 'object':
+        handle = JSObject(
+            handle_id,
+            ref_obj['className'],
+            ref_obj['constructorFunction']['ref'],
+            ref_obj['prototypeObject']['ref'],
+            _parse_properties(ref_obj['properties']))
+      elif handle_type == 'function':
+        uri = script_uris[ref_obj['scriptId']]
+        handle = JSFunction(
+            handle_id,
+            ref_obj['className'],
+            ref_obj['constructorFunction']['ref'],
+            ref_obj['prototypeObject']['ref'],
+            _parse_properties(ref_obj['properties']),
+            ref_obj['name'],
+            ref_obj['inferredName'],
+            (uri, ref_obj['line'] + 1, ref_obj['column'] + 1))
+      handle_manager.add_value(handle)
+
+  def _parse_frame(self, frame_obj, handle_manager):
+    script = handle_manager.get_value(frame_obj['script']['ref'])
+    uri = script.uri()
+    location = (uri, frame_obj['line'] + 1, frame_obj['column'] + 1)
+    argument_vars = []
+    for var in frame_obj['arguments']:
+      argument_vars.append((var.get('name', None), var['value']['ref']))
+    local_vars = []
+    for var in frame_obj['locals']:
+      local_vars.append((var['name'], var['value']['ref']))
+    scopes = []
+    for scope_info in frame_obj['scopes']:
+      scopes.append(Scope(self, scope_info['index'], scope_info['type']))
+    frame = Frame(
+        frame_obj['index'],
+        location,
+        frame_obj['constructCall'],
+        frame_obj['atReturn'],
+        frame_obj['func']['ref'],
+        frame_obj['receiver']['ref'],
+        argument_vars,
+        local_vars,
+        scopes)
     return frame
+
+  # def __init__(self, ordinal, location, is_constructor, is_at_return,
+  #              function_ref, this_ref, argument_vars, local_vars):
+  #   self._ordinal = ordinal
+  #   self._location = location
+  #   self._is_constructor = is_constructor
+  #   self._is_at_return = is_at_return
+  #   self._function_ref = function_ref
+  #   self._this_ref = this_ref
+  #   self._arguments = argument_vars
+  #   self._locals = local_vars
 
   def _handle_break_event(self, recv_obj):
     """Handles a break event from the remote debugger.
@@ -341,8 +451,8 @@ class V8DebuggerProtocol(DebuggerProtocol):
     # Fire event
     source = (
         body['script']['name'],
-        body['sourceLine'],
-        body['sourceColumn'])
+        body['sourceLine'] + 1,
+        body['sourceColumn'] + 1)
     event = BreakEvent(self, source, breakpoint_ids)
     if self._break_callback:
       self._break_callback(event)
@@ -363,8 +473,8 @@ class V8DebuggerProtocol(DebuggerProtocol):
     # Fire event
     source = (
         body['script']['name'],
-        body['sourceLine'],
-        body['sourceColumn'])
+        body['sourceLine'] + 1,
+        body['sourceColumn'] + 1)
     event = ExceptionEvent(self, source, is_uncaught, exception)
     if self._exception_callback:
       self._exception_callback(event)
