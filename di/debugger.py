@@ -312,8 +312,12 @@ class Debugger(object):
   def can_evaluate(self):
     return True
 
-  def get_stacktrace(self):
-    pass
+  def query_frame_scopes(self, frame, callback):
+    if self._is_running:
+      return
+    print 'DEBUGGER: query frame scopes'
+    self._protocol.query_frame_scopes(frame, lambda response: callback(
+        response.handle_set(), response.scopes()))
 
   def force_gc(self):
     pass

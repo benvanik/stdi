@@ -521,6 +521,12 @@ class CustomView(object):
     settings.set('rulers', [])
     #settings.set('color_scheme', os.path.join(PACKAGE_DIR, 'stdi.tmTheme'))
 
+  def window(self):
+    return self._window
+
+  def debugger(self):
+    return self._debugger
+
   def view(self):
     return self._view
 
@@ -630,15 +636,35 @@ class VariablesView(CustomView):
       window.set_view_index(self._view, 1, 0)
 
   def update(self, snapshot):
-    view = self.view()
-    view.set_read_only(False)
-    edit = view.begin_edit()
-    view.erase(edit, sublime.Region(0, view.size()))
+    debugger = self.debugger()
+    # TODO(benvanik); active frame
+    frame = snapshot.frames()[0]
 
-    #
+    def _on_frame_scopes(handle_set, scopes):
+      view = self.view()
+      view.set_read_only(False)
+      edit = view.begin_edit()
+      view.erase(edit, sublime.Region(0, view.size()))
+      scope_header_regions = []
 
-    view.end_edit(edit)
-    view.set_read_only(True)
+      for scope in scopes:
+        scope_header = '%s:\n' % (scope.scope_name())
+        view.insert(edit, view.size(), scope_header)
+        scope_header_regions.append(view.line(view.size() - 2))
+
+        scope_contents = handle_set.print_value(None, scope.object_ref())
+        view.insert(edit, view.size(), scope_contents)
+
+        view.insert(edit, view.size(), '\n')
+
+      # Mark headers
+      #scope_header_regions
+
+      view.end_edit(edit)
+      view.set_read_only(True)
+      # TODO(benvanik): restore position
+
+    debugger.query_frame_scopes(frame, _on_frame_scopes)
 
 
 class EventListener(sublime_plugin.EventListener):
@@ -774,13 +800,6 @@ class DebuggerListener(di.DebuggerListener):
       print '  locals:'
       for var in frame.local_refs():
         print '    %s = %s' % (var[0], handle_set.get_value(var[1]))
-      def _on_query(response):
-        print '  scopes:'
-        scope_handle_set = response.handle_set()
-        for scope in response.scopes():
-          print '    %s : %s' % (scope.ordinal(), scope.scope_type())
-          scope_handle_set.print_value('scope', scope.object_ref())
-      self.debugger()._protocol.query_frame_scopes(frame, _on_query)
 
     debugger = self.debugger()
     if not self._callstack_view:

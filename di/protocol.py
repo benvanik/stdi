@@ -490,6 +490,20 @@ class Scope(object):
   def scope_type(self):
     return self._scope_type
 
+  def scope_name(self):
+    if self._scope_type == ScopeType.GLOBAL:
+      return 'Global'
+    elif self._scope_type == ScopeType.LOCAL:
+      return 'Local'
+    elif self._scope_type == ScopeType.WITH:
+      return 'With'
+    elif self._scope_type == ScopeType.CLOSURE:
+      return 'Closure'
+    elif self._scope_type == ScopeType.CATCH:
+      return 'Catch'
+    else:
+      return 'Unknown'
+
   def object_ref(self):
     return self._object_ref
 
@@ -519,16 +533,22 @@ class HandleSet(object):
   def print_value(self, key, handle_id):
     dumper = _RecursiveDumper(self)
     dumper.dump(key, self.get_value(handle_id))
+    return dumper.output()
 
 
 class _RecursiveDumper(object):
   def __init__(self, handle_set):
     self._handle_set = handle_set
     self._stack = []
+    self._output = ''
+
+  def output(self):
+    return self._output
 
   def dump(self, key, value):
-    indent = ''.join(['  ' for n in range(len(self._stack))])
-    print '%s%s: %s' % (indent, key, value)
+    if key:
+      indent = ''.join(['  ' for n in range(len(self._stack))])
+      self._output += '%s%s: %s\n' % (indent, key, value)
     if value in self._stack:
       return
     if isinstance(value, JSObject):
@@ -545,7 +565,6 @@ class _RecursiveDumper(object):
   def _dump_object(self, value):
     for p in value.properties():
       self.dump(p.name(), self._handle_set.get_value(p.ref()))
-    pass
 
 
 class JSHandle(object):
