@@ -454,6 +454,21 @@ class Frame(object):
   def local_refs(self):
     return self._locals
 
+  def formatted_call(self, handle_set):
+    function = handle_set.get_value(self._function_ref)
+    s = '%s(' % (function.inferred_name() or function.name() or '<anonymous>')
+    for n in range(len(self._arguments)):
+      var = self._arguments[n]
+      var_name = var[0]
+      var_value = handle_set.get_value(var[1])
+      if var_name:
+        s += '%s=' % (var_name)
+      s += str(var_value)
+      if n < len(self._arguments) - 1:
+        s += ', '
+    s += ')'
+    return s
+
 
 class ScopeType:
   GLOBAL = 0

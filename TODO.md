@@ -38,6 +38,17 @@ SourceMaps
 
 
 
+Scope Variables
+Local:
+  - name: typename
+      some_param: 5
+    + some_child: typename
+  + name: value
+  + name: value
+Closure:
+Global:
+
+
 
 * adding things to gutter:
   * breakpoints

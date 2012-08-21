@@ -4,6 +4,7 @@ __author__ = 'benvanik@google.com (Ben Vanik)'
 
 
 import os
+import string
 import sublime
 import sublime_plugin
 
@@ -441,7 +442,7 @@ class SourceView(object):
 
     # Pick based on breakpoint/exception/etc
     # TODO(benvanik): pick icon/style
-    scope = 'stdi.gutter.active_line'
+    scope = 'invalid' #'stdi.gutter.active_line'
     icon = 'bookmark'
 
     self.add_regions('stdi_view_active',
@@ -487,22 +488,26 @@ class SourceView(object):
     del self._breakpoint_regions[breakpoint.id()]
 
 
-class CallstackView(object):
-  """A view that models a callstack, displaying and handling frame navigation.
+class CustomView(object):
+  """A ST view that is used for debugger IO.
   """
-  def __init__(self, window, debugger, *args, **kwargs):
-    """Initializes a callstack view.
+  def __init__(self, window, debugger, title, *args, **kwargs):
+    """Initializes a custom view.
 
     Args:
       window: Target sublime window.
       debugger: Debugger.
+      title: View title.
     """
     self._window = window
     self._debugger = debugger
+    active_view = window.active_view()
     self._view = window.new_file()
-    self._view.set_name('Callstack')
+    window.focus_view(active_view)
+    self._view.set_name(title)
     self._view.set_read_only(True)
     self._view.set_scratch(True)
+    #self._view.set_syntax_file('Packages/Python/Python.tmLanguage')
     settings = self._view.settings()
     settings.set('stdi_callstack', True)
     settings.set('command_mode', False)
@@ -514,11 +519,10 @@ class CallstackView(object):
     settings.set('gutter', True)
     settings.set('spell_check', False)
     settings.set('rulers', [])
-    #settings.set('color_scheme', os.path.join(PACKAGE_DIR, 'STDI.tmTheme'))
-    if window.num_groups() == 4:
-      window.set_view_index(self._view, 2, 0)
-    elif window.num_groups() > 1:
-      window.set_view_index(self._view, 1, 0)
+    #settings.set('color_scheme', os.path.join(PACKAGE_DIR, 'stdi.tmTheme'))
+
+  def view(self):
+    return self._view
 
   def close(self):
     active_view = self._window.active_view()
@@ -529,15 +533,51 @@ class CallstackView(object):
   def focus(self):
     self._window.focus_view(self._view)
 
+
+class CallstackView(CustomView):
+  """A view that models a callstack, displaying and handling frame navigation.
+  """
+  def __init__(self, window, debugger, *args, **kwargs):
+    """Initializes a callstack view.
+
+    Args:
+      window: Target sublime window.
+      debugger: Debugger.
+    """
+    super(CallstackView, self).__init__(window, debugger, 'Callstack',
+                                        *args, **kwargs)
+    if window.num_groups() == 4:
+      window.set_view_index(self._view, 2, 0)
+    elif window.num_groups() > 1:
+      window.set_view_index(self._view, 1, 0)
+
   def update(self, snapshot):
-    s = ''
+    view = self.view()
+    view.set_read_only(False)
+    edit = view.begin_edit()
+    view.erase(edit, sublime.Region(0, view.size()))
+    frame_regions = []
+    frame_info_regions = []
+    source_info_regions = []
 
     handle_set = snapshot.handle_set()
     for frame in snapshot.frames():
       location = frame.location()
-      s += 'frame %s: %s@%s:%s\n' % (frame.ordinal(), location[0],
-                                                      location[1],
-                                                      location[2])
+
+      s = '%s: %s' % (frame.ordinal(), frame.formatted_call(handle_set))
+      s = string.ljust(s, 120) + '\n'
+      view.insert(edit, view.size(), s)
+      frame_info_region = view.line(view.size() - 2)
+      frame_info_regions.append(frame_info_region)
+
+      s = '    %s@%s:%s\n' % (location[0], location[1], location[2])
+      view.insert(edit, view.size(), s)
+      source_info_region = view.line(view.size() - 2)
+      source_info_regions.append(source_info_region)
+
+      frame_regions.append(sublime.Region(frame_info_region.begin(),
+                                          source_info_region.end()))
+
       # print '  is_constructor: %s' % (frame.is_constructor())
       # print '  is_at_return: %s' % (frame.is_at_return())
       # print '  function: %s' % (handle_set.get_value(frame.function_ref()))
@@ -546,11 +586,57 @@ class CallstackView(object):
       # for var in frame.argument_refs():
       #   print '    %s = %s' % (var[0], handle_set.get_value(var[1]))
 
-    view = self._view
+    # Mark info regions
+    view.add_regions(
+        'stdi_callstack_frame_info',
+        frame_info_regions,
+        'string') #'stdi.callstack.frame_info',
+
+    # Mark source regions
+    view.add_regions(
+        'stdi_callstack_source_info',
+        source_info_regions,
+        'comment') #'stdi.callstack.source_info',
+
+    # Mark active frame
+    scope = 'stdi.gutter.breakpoint'
+    icon = 'dot'
+    view.add_regions(
+        'stdi_callstack_active_frame',
+        [frame_regions[0]],
+        'stdi.callstack.active_frame',
+        'dot',
+        sublime.HIDDEN)
+
+    view.end_edit(edit)
+    view.set_read_only(True)
+
+
+class VariablesView(CustomView):
+  """A view that displays scope variables.
+  """
+  def __init__(self, window, debugger, *args, **kwargs):
+    """Initializes a variables view.
+
+    Args:
+      window: Target sublime window.
+      debugger: Debugger.
+    """
+    super(VariablesView, self).__init__(window, debugger, 'Variables',
+                                        *args, **kwargs)
+    if window.num_groups() == 4:
+      window.set_view_index(self._view, 3, 0)
+    elif window.num_groups() > 1:
+      window.set_view_index(self._view, 1, 0)
+
+  def update(self, snapshot):
+    view = self.view()
     view.set_read_only(False)
     edit = view.begin_edit()
     view.erase(edit, sublime.Region(0, view.size()))
-    view.insert(edit, view.size(), s)
+
+    #
+
     view.end_edit(edit)
     view.set_read_only(True)
 
@@ -633,6 +719,7 @@ class DebuggerListener(di.DebuggerListener):
     super(DebuggerListener, self).__init__(*args, **kwargs)
     self._plugin = plugin
     self._callstack_view = None
+    self._variables_view = None
 
   def on_attach(self, *args, **kwargs):
     print 'EVENT: on_attach'
@@ -650,6 +737,8 @@ class DebuggerListener(di.DebuggerListener):
 
     if self._callstack_view:
       self._callstack_view.close()
+    if self._variables_view:
+      self._variables_view.close()
 
     status_manager = self._plugin.status_manager()
     detach_message = 'Detached'
@@ -666,12 +755,6 @@ class DebuggerListener(di.DebuggerListener):
   def on_resume(self, *args, **kwargs):
     print 'EVENT: on_resume'
     plugin().clear_active_location()
-
-  def show_callstack(self):
-    debugger = self.debugger()
-    if not self._callstack_view:
-      self._callstack_view = CallstackView(sublime.active_window(), debugger)
-    self._callstack_view.focus()
 
   def on_snapshot(self, snapshot, *args, **kwargs):
     print 'EVENT: on_snapshot'
@@ -698,8 +781,16 @@ class DebuggerListener(di.DebuggerListener):
           print '    %s : %s' % (scope.ordinal(), scope.scope_type())
           scope_handle_set.print_value('scope', scope.object_ref())
       self.debugger()._protocol.query_frame_scopes(frame, _on_query)
-    self.show_callstack()
+
+    debugger = self.debugger()
+    if not self._callstack_view:
+      self._callstack_view = CallstackView(sublime.active_window(), debugger)
+    self._callstack_view.focus()
     self._callstack_view.update(snapshot)
+    if not self._variables_view:
+      self._variables_view = VariablesView(sublime.active_window(), debugger)
+    self._variables_view.focus()
+    self._variables_view.update(snapshot)
 
   def on_break(self, location, breakpoints_hit, *args, **kwargs):
     print 'EVENT: on_break(%s@%s:%s)' % (location[0], location[1], location[2])
