@@ -16,6 +16,7 @@ PACKAGE_DIR = os.getcwdu()
 
 
 # DEBUG: before possibly reloading the di module, we need to clean it up
+views.cleanup_all()
 di.cleanup_module()
 # DEBUG: use reimport to update all modules that have changed - this is needed
 #        because Sublime Text will only reload modules in the plugin root
@@ -489,7 +490,7 @@ class SourceView(object):
     del self._breakpoint_regions[breakpoint.id()]
 
 
-class CallstackView(CustomView):
+class CallstackView(views.CustomView):
   """A view that models a callstack, displaying and handling frame navigation.
   """
   def __init__(self, window, debugger, *args, **kwargs):
@@ -567,6 +568,88 @@ class CallstackView(CustomView):
     view.set_read_only(True)
 
 
+class _VariableNode(views.TreeNode):
+  def __init__(self, view, debugger, handle_set, key, value, *args, **kwargs):
+    super(_VariableNode, self).__init__(view, *args, **kwargs)
+    self._debugger = debugger
+    self._handle_set = handle_set
+    self._key = key
+    self._value = value
+    assert value
+
+  def label(self):
+    return self._key
+
+  def description(self):
+    return str(self._value)
+
+  def has_children(self):
+    return (self._value.handle_type() == 'object' or
+            self._value.handle_type() == 'function')
+
+  def query_children(self, callback):
+    handle_ids = []
+    for p in self._value.properties():
+      handle_ids.append(p.ref())
+    def _on_query_values(handle_set):
+      nodes = []
+      for p in self._value.properties():
+        key = p.name()
+        value = handle_set.get_value(p.ref())
+        nodes.append(_VariableNode(
+            self.view(), self._debugger, handle_set, key, value))
+      callback(nodes)
+    self._debugger.query_values(handle_ids, _on_query_values)
+
+
+class _ScopeNode(_VariableNode):
+  def __init__(self, view, debugger, handle_set, scope, *args, **kwargs):
+    value = handle_set.get_value(scope.object_ref())
+    super(_ScopeNode, self).__init__(view, debugger, handle_set,
+                                     scope.scope_name(), value, *args, **kwargs)
+    self._scope = scope
+
+  def description(self):
+    return None
+
+  def has_children(self):
+    return True
+
+
+class _RootVariablesNode(views.TreeNode):
+  def __init__(self, view, debugger, *args, **kwargs):
+    super(_RootVariablesNode, self).__init__(view, *args, **kwargs)
+    self._debugger = debugger
+    self._handle_set = None
+    self._scopes = None
+
+  def label(self):
+    return 'Variables'
+
+  def description(self):
+    return None
+
+  def has_children(self):
+    return True if self._scopes else False
+
+  def query_children(self, callback):
+    nodes = []
+    if self._scopes:
+      for scope in self._scopes:
+        nodes.append(_ScopeNode(self.view(), self._debugger, self._handle_set,
+                                scope))
+    callback(nodes)
+
+  def can_collapse(self):
+    return False
+
+  def update(self, handle_set, scopes):
+    self.set_expanded(False)
+    self._handle_set = handle_set
+    self._scopes = scopes
+    self.set_expanded(True)
+
+
 class VariablesView(views.TreeView):
   """A view that displays scope variables.
   """
@@ -590,29 +673,9 @@ class VariablesView(views.TreeView):
     frame = snapshot.frames()[0]
 
     def _on_frame_scopes(handle_set, scopes):
-      view = self.view()
-      view.set_read_only(False)
-      edit = view.begin_edit()
-      view.erase(edit, sublime.Region(0, view.size()))
-      scope_header_regions = []
-
-      for scope in scopes:
-        scope_header = '%s:\n' % (scope.scope_name())
-        view.insert(edit, view.size(), scope_header)
-        scope_header_regions.append(view.line(view.size() - 2))
-
-        scope_contents = handle_set.print_value(None, scope.object_ref())
-        view.insert(edit, view.size(), scope_contents)
-
-        view.insert(edit, view.size(), '\n')
-
-      # Mark headers
-      #scope_header_regions
-
-      view.end_edit(edit)
-      view.set_read_only(True)
-      # TODO(benvanik): restore position
-
+      root_node = _RootVariablesNode(self.view(), self.debugger())
+      root_node.update(handle_set, scopes)
+      self.reset(root_node)
     debugger.query_frame_scopes(frame, _on_frame_scopes)
 
 
@@ -640,6 +703,11 @@ class EventListener(sublime_plugin.EventListener):
     new_source = view.substr(sublime.Region(0, view.size()))
     for debugger in plugin().debuggers():
       debugger.change_source(uri, new_source)
+
+  def on_selection_modified(self, view):
+    custom_view = views.get_custom_view(view)
+    if custom_view:
+      custom_view.on_selection_modified()
 
   def on_activated(self, view):
     plugin().status_manager().update_view(view)
@@ -730,6 +798,10 @@ class DebuggerListener(di.DebuggerListener):
   def on_resume(self, *args, **kwargs):
     print 'EVENT: on_resume'
     plugin().clear_active_location()
+    if self._callstack_view:
+      self._callstack_view.clear()
+    if self._variables_view:
+      self._variables_view.clear()
 
   def on_snapshot(self, snapshot, *args, **kwargs):
     print 'EVENT: on_snapshot'

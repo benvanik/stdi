@@ -16,6 +16,7 @@ from .debugger import Debugger
 from .protocol import *
 from .provider import InstanceInfo, InstanceProvider
 
+
 def _transform_node_source(source):
   """Transforms a source file into the same format node.js expects.
 
@@ -312,16 +313,16 @@ class V8DebuggerProtocol(DebuggerProtocol):
     #   kwargs = {}
     if response_command == 'lookup':
       response_type = QueryValuesResponse
-      values = []
-      # TODO(benvanik): read values
+      handle_set = HandleSet()
+      self._populate_handle_set_from_map(handle_set, body)
       kwargs = {
-          'values': values,
+          'handle_set': handle_set,
           }
     elif response_command == 'scopes':
       response_type = QueryFrameScopesResponse
       handle_set = HandleSet()
       ref_objs = recv_obj.get('refs', [])
-      self._populate_handle_set(handle_set, ref_objs)
+      self._populate_handle_set_from_list(handle_set, ref_objs)
       scopes = []
       for scope_info in body['scopes']:
         scopes.append(Scope(scope_info['index'], scope_info['type'],
@@ -334,7 +335,7 @@ class V8DebuggerProtocol(DebuggerProtocol):
       response_type = SnapshotResponse
       handle_set = HandleSet()
       ref_objs = recv_obj.get('refs', [])
-      self._populate_handle_set(handle_set, ref_objs)
+      self._populate_handle_set_from_list(handle_set, ref_objs)
       frames = []
       for frame_obj in body.get('frames', []):
         frames.append(self._parse_frame(frame_obj, handle_set))
@@ -360,13 +361,21 @@ class V8DebuggerProtocol(DebuggerProtocol):
       del self._pending_callbacks[seq_id]
       callback(response)
 
-  def _populate_handle_set(self, handle_set, ref_objs):
+  def _populate_handle_set_from_map(self, handle_set, ref_obj_map):
+    for (key, ref_obj) in ref_obj_map.items():
+      self._add_handle_to_set(handle_set, ref_obj)
+
+  def _populate_handle_set_from_list(self, handle_set, ref_objs):
     # Pre-pass to find all scripts by ID
     script_uris = {}
     for ref_obj in ref_objs:
       if ref_obj['type'] == 'script':
         script_uris[ref_obj['id']] = ref_obj['name']
 
+    for ref_obj in ref_objs:
+      self._add_handle_to_set(handle_set, ref_obj)
+
+  def _add_handle_to_set(self, handle_set, ref_obj):
     def _parse_properties(properties_obj):
       properties = []
       for property_obj in properties_obj:
@@ -377,41 +386,45 @@ class V8DebuggerProtocol(DebuggerProtocol):
             property_obj.get('attributes', 0)))
       return properties
 
-    for ref_obj in ref_objs:
-      print ref_obj
-      handle_id = ref_obj['handle']
-      handle_type = ref_obj['type']
-      if handle_type == 'undefined':
-        handle = JSUndefined(handle_id)
-      elif handle_type == 'null':
-        handle = JSNull(handle_id)
-      elif handle_type == 'boolean':
-        handle = JSBoolean(handle_id, ref_obj['value'])
-      elif handle_type == 'number':
-        handle = JSNumber(handle_id, ref_obj['value'])
-      elif handle_type == 'string':
-        handle = JSString(handle_id, ref_obj['value'])
-      elif handle_type == 'script':
-        handle = JSScript(handle_id, ref_obj['name'])
-      elif handle_type == 'object':
-        handle = JSObject(
-            handle_id,
-            ref_obj['className'],
-            ref_obj['constructorFunction']['ref'],
-            ref_obj['prototypeObject']['ref'],
-            _parse_properties(ref_obj['properties']))
-      elif handle_type == 'function':
-        uri = script_uris[ref_obj['scriptId']]
-        handle = JSFunction(
-            handle_id,
-            ref_obj['className'],
-            ref_obj['constructorFunction']['ref'],
-            ref_obj['prototypeObject']['ref'],
-            _parse_properties(ref_obj['properties']),
-            ref_obj['name'],
-            ref_obj['inferredName'],
-            (uri, ref_obj['line'] + 1, ref_obj['column'] + 1))
-      handle_set.add_value(handle)
+    handle_id = ref_obj['handle']
+    handle_type = ref_obj['type']
+    if handle_type == 'undefined':
+      handle = JSUndefined(handle_id)
+    elif handle_type == 'null':
+      handle = JSNull(handle_id)
+    elif handle_type == 'boolean':
+      handle = JSBoolean(handle_id, ref_obj['value'])
+    elif handle_type == 'number':
+      handle = JSNumber(handle_id, ref_obj['value'])
+    elif handle_type == 'string':
+      handle = JSString(handle_id, ref_obj['value'])
+    elif handle_type == 'script':
+      handle = JSScript(handle_id, ref_obj['name'])
+    elif handle_type == 'object':
+      handle = JSObject(
+          handle_id,
+          ref_obj['className'],
+          ref_obj['constructorFunction']['ref'],
+          ref_obj['prototypeObject']['ref'],
+          _parse_properties(ref_obj['properties']))
+    elif handle_type == 'function':
+      location = None
+      if 'scriptId' in ref_obj:
+        #print ref_obj['scriptId']
+        #print script_uris
+        #uri = script_uris[ref_obj['scriptId']]
+        #location = (uri, ref_obj['line'] + 1, ref_obj['column'] + 1)
+        pass
+      handle = JSFunction(
+          handle_id,
+          ref_obj['className'],
+          ref_obj['constructorFunction']['ref'],
+          ref_obj['prototypeObject']['ref'],
+          _parse_properties(ref_obj['properties']),
+          ref_obj['name'],
+          ref_obj['inferredName'],
+          location)
+    handle_set.add_value(handle)
 
   def _parse_frame(self, frame_obj, handle_set):
     script = handle_set.get_value(frame_obj['script']['ref'])

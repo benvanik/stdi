@@ -312,6 +312,13 @@ class Debugger(object):
   def can_evaluate(self):
     return True
 
+  def query_values(self, handle_ids, callback):
+    if self._is_running:
+      return
+    print 'DEBUGGER: query handle values'
+    self._protocol.query_values(handle_ids, lambda response: callback(
+        response.handle_set()))
+
   def query_frame_scopes(self, frame, callback):
     if self._is_running:
       return

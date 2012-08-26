@@ -711,5 +711,8 @@ class JSFunction(JSObject):
 
   def __repr__(self):
     name = self._inferred_name or self._name
-    return '%s (%s@%s:%s)' % (name, self._location[0], self._location[1],
-                              self._location[2])
+    if self._location:
+      return '%s (%s@%s:%s)' % (name, self._location[0], self._location[1],
+                                self._location[2])
+    else:
+      return name
